@@ -508,13 +508,18 @@ class Wordlist:
         "basicenglish": BasicEnglish
     }
 
+    base_path = None
     @classmethod
     def load_wordlist(self, target):
         if target in self.mapping:
             target = self.mapping[target]
         if target in self.corpus:
             return self.corpus[target]
-        fname = "corpus/" + target + ".corpus"
+
+        if not self.base_path:
+            from pathlib import Path
+            self.base_path = Path(sys.modules[self.__module__].__file__).parent / 'corpus'
+        fname = str(self.base_path / (target + ".corpus"))
         no_apostroph = False
         try:
             with open(fname, 'r') as f:
