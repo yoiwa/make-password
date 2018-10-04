@@ -20,10 +20,12 @@ def generate(fspec, count):
     for ncount in range(count):
         e = 0.0
         o = []
+        o_hint = []
 
         def proc(filling, i, sep, wl, iswords, ct):
             nonlocal e
             nonlocal o
+            nonlocal o_hint
 
             initial = not filling and i == 0
             if iswords:
@@ -52,8 +54,16 @@ def generate(fspec, count):
                 e += ct * e1
 
             for c in range(0, ct):
-                o.append(presep if c == 0 else intersep)
-                o.append(wl[R.randrange(l1)])
+                w = wl[R.randrange(l1)]
+                if type(w) is tuple:
+                    w, h = w
+                else:
+                    w, h = w, w
+                s = presep if c == 0 else intersep
+                o.append(s)
+                o.append(w)
+                o_hint.append(s)
+                o_hint.append(h)
 
         for i in fspec:
             proc(False, *i)
@@ -62,7 +72,12 @@ def generate(fspec, count):
 
         if ncount == 0 and opts.verbose:
             print("Entropy computation: total generated entropy {:.3f} bits".format(e), file=sys.stderr)
-        print("".join(o))
+        o = "".join(o)
+        o_hint = "".join(o_hint)
+
+        print(o)
+        if (opts.hint and o_hint != o):
+            print("# " + o_hint + "\n")
 
 def parse_fspec(s):
     o = []
@@ -132,6 +147,7 @@ password format specifier:
                                      epilog=helpstr,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--verbose', action='count', help='show some additional diagnostics', dest='verbose')
+    parser.add_argument('--hint', '-H', action='store_true', help='show hint line as well')
     parser.add_argument('format', help='password format')
     parser.add_argument('count', help='number of generated passwords', nargs='?', type=int, default=1)
 
@@ -141,7 +157,7 @@ password format specifier:
         s = args[i]
         if (s == '--'):
             break
-        if (len(s) >= 2 and s[0] == '-' and s[1] != '-'):
+        if (len(s) >= 2 and s[0] == '-' and s[1] != '-' and s != '-H'):
             args[i:i] = ('--',)
             break
 
@@ -520,27 +536,45 @@ class Wordlist:
             from pathlib import Path
             self.base_path = Path(sys.modules[self.__module__].__file__).parent / 'corpus'
         fname = str(self.base_path / (target + ".corpus"))
+
         no_apostroph = False
+        hinted = False
+        in_header = True
         try:
             with open(fname, 'r') as f:
                 wlist = set()
                 for l in f:
-                    if (len(l)) < 1 or l[0] == '#':
-                        if l.startswith("#option no-apostroph"):
-                            no_apostroph = True
+                    l = l.strip()
+                    if l == '':
+                        in_header = False
                         continue
-                    for word in l.split():
-                        if (len(word) < 1 or
-                            word[0] == "'" or
-                            word[-1] == "'"):
-                            continue
-                        for char in word:
-                            if char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'":
-                                break
-                            if no_apostroph and char == "'":
-                                break
-                        else:
-                            wlist.add(word)
+                    if l[0] == '#':
+                        if in_header:
+                            if l == "#format hinted":
+                                hinted = True
+                            if l == "#option no-apostroph":
+                                no_apostroph = True
+                        continue
+
+                    in_header = False
+                    if hinted:
+                        w = l.split('\t')
+                        if len(w) != 2:
+                            raise BadFormatError("invalid line in corpus: " + l)
+                        wlist.add(tuple(w))
+                    else:
+                        for word in l.split():
+                            if (word == '' or
+                                word[0] == "'" or
+                                word[-1] == "'" or word[-2:-1] == "'s"):
+                                continue
+                            for char in word:
+                                if char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'":
+                                    break
+                                if no_apostroph and char == "'":
+                                    break
+                            else:
+                                wlist.add(word)
             wlist = list(sorted(wlist))
             if opts.verbose:
                 print("loaded {} words of corpus as {}".format(len(wlist), target), file=sys.stderr)

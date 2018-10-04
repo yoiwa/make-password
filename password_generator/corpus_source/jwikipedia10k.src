@@ -1,4 +1,4 @@
-#option no-apostroph
+#processor kakasi
 # from https://en.wiktionary.org/wiki/Wiktionary:Frequency_lists/Japanese
 # with reformating, annotation. CC BY-SA 3.0 applies.
 # for debugging: 'kakasi -iutf8 -outf8 -rhepburn -Ja -Ha -f < jwikipedia-10000.corpus-source | less'

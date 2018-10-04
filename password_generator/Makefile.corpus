@@ -1,0 +1,9 @@
+#!make -f
+
+all: corpus/jwikipedia10k.corpus
+
+corpus/%.corpus: corpus_source/%.src
+	python3 corpus_convert.py $< $@
+
+corpus/words.corpus: /usr/share/dict/words
+	cat $< | grep -v \''s?$' | sort | uniq > $@
