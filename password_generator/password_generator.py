@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# make-password: password generator with dictionary corpus support.
+# make-password: password/dictionary-based passphrase generator.
 # Written by Yutaka OIWA (AIST).
 # (c) 2018 National Institute of Advanced Industrial Science and Technology.
 # See LICENSE file copyright detials.
@@ -39,15 +39,15 @@ def generate(fspec, count):
             e1 = log2(l1)
 
             if ct == 0:
-                if entropy == None:
+                if entropy == None or i != len(fspec) - 1:
                     ct = 1
                 elif e >= entropy:
                     ct = 0
                 else:
                     ct = int(ceil((entropy - e) / e1))
-                    if ncount == 0 and opts.verbose:
-                        print("Entropy computation: {0:.3f} * {2:d} = {3:.3f} bits".format(e1, e, ct, ct * e1), file=sys.stderr)
-                    e += ct * e1
+                if ncount == 0 and opts.verbose and ct > 0:
+                    print("Entropy computation: {0:.3f} * {2:d} = {3:.3f} bits".format(e1, e, ct, ct * e1), file=sys.stderr)
+                e += ct * e1
             else:
                 if ncount == 0 and opts.verbose:
                     print("Entropy computation: {0:.3f} * {2:d} = {3:.3f} bits".format(e1, e, ct, ct * e1), file=sys.stderr)
@@ -79,19 +79,40 @@ def generate(fspec, count):
         if (opts.hint and o_hint != o):
             print("# " + o_hint + "\n")
 
+def expand_subs(s):
+    o = set()
+    while s != '':
+        mo = re.match(r'\A(.)(?:-(.))?(.*)\Z', s)
+        assert (mo != None), s
+        if mo.group(2) == None:
+            o.add(ord(mo.group(1)))
+        else:
+            for e in range(ord(mo.group(1)), ord(mo.group(2)) + 1):
+                o.add(e)
+        s = mo.group(3)
+    r = "".join(chr(x) for x in o)
+    return r
+
 def parse_fspec(s):
     o = []
     i = 0
+    orig_s = s
     while(s != ""):
-        mo = re.match(r"\A([ -/,.]?)([a-zA-Z]|\[:?[\w\-_]+:?\])(\d*)(.*)\Z", s)
+        mo = re.match(r"""\A
+                          (?P<sep>[\ \-/,.]?)
+                          (?:
+                             (?P<pat1>[a-zA-Z])
+                            |\[:?
+                              (?P<pat2>[\w\-_]+)
+                                 (?:\^(?P<subs>[\w_\-]+))?
+                              :?\])
+                          (?P<dig>\d*)
+                          (?P<rest>.*)\Z""", s, re.X)
+
         if not mo:
             break
-        (sep, pat, dig, s) = mo.groups()
-        
-        if pat[0] == '[' and pat[-1] == ']':
-            pat = pat[1:-1]
-            if pat[0] == ':' and pat[-1] == ':':
-                pat = pat[1:-1]
+        (sep, pat1, pat2, subs, dig, s) = mo.group('sep', 'pat1', 'pat2', 'subs', 'dig', 'rest')
+        pat = pat1 or pat2
 
         if pat in Charlist.mapping:
             wl = Charlist.mapping[pat]
@@ -99,15 +120,27 @@ def parse_fspec(s):
         else:
             wl = Wordlist.load_wordlist(pat)
             iswords = True
+
+        if subs:
+            subse = expand_subs(subs)
+            wl = [w for w in wl if w[0] in subse]
+            if len(wl) == 0:
+                raise BadFormatError("no words starting with [{}] in wordset {}".format(subs, pat))
+            elif len(wl) == 1:
+                raise BadFormatError("only one word starting with [{}] in wordset {}".format(subs, pat))
+
+        if len(wl) <= 1:
+            raise BadFormatError("not enough candidate in wordset {}".format(subs, pat))
+
         o.append((i, (sep or ""), wl, iswords, (int(dig) if dig != '' else 0)))
         i += 1
 
-    if i == 0:
-        raise BadFormatError(1, s)
-
     mo = re.match(r"\A(?: *:(\d+))?\Z", s)
     if not mo:
-        raise BadFormatError(2, s)
+        raise BadFormatError("parse failed at " + s)
+
+    if i == 0:
+        raise BadFormatError("No format specifier found in " + s)
 
     entropy = mo.group(1)
     entropy = entropy and float(entropy)
@@ -122,13 +155,13 @@ password format specifier:
       sequences of characters from predefined sets.
         d: digits l: lowercase a: lowercase + digits, 
         A: lowercase + upper + digits, x,X: hexadecimal, 
-        B: Base64, s: ASCII printable symbols
+        B: Base64, b: Base64-FSSAFE, s: ASCII printable symbols
 
     <wordset><numbers> (e8, [english]8, j8):
       words selected from wordset corpuses separated by spaces.
-        e, [english]: ~2000-word English,
-        E: ~10k word english from Gutenberg project, 
-        j: ~8k word Japanese romanization from Wikipedia.
+        e, [english]: ~2000-word Basic words in English,
+        E, [gutenberg10k]: ~10k word English from Gutenberg project, 
+        j, [jwikipedia10k]: ~8k word Japanese romanization from Wikipedia.
       More word corpuses can be added from external sources.
 
     -e8, -j8 etc.: words separated by a hyphen as a separator
@@ -143,11 +176,12 @@ password format specifier:
 """
 
     parser = argparse.ArgumentParser(description='Generate password candidates',
-                                     allow_abbrev=False,
                                      epilog=helpstr,
+                                     add_help=False,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--verbose', action='count', help='show some additional diagnostics', dest='verbose')
-    parser.add_argument('--hint', '-H', action='store_true', help='show hint line as well')
+    parser.add_argument('-v', '--verbose', action='count', help='show some additional diagnostics', dest='verbose')
+    parser.add_argument('-H', '--hint', action='store_true', help='show pronunciation hint')
+    parser.add_argument('--help', action='help', help='show this help message')
     parser.add_argument('format', help='password format')
     parser.add_argument('count', help='number of generated passwords', nargs='?', type=int, default=1)
 
@@ -157,14 +191,17 @@ password format specifier:
         s = args[i]
         if (s == '--'):
             break
-        if (len(s) >= 2 and s[0] == '-' and s[1] != '-' and s != '-H'):
+        if (len(s) >= 2 and s[0] == '-' and s[1] not in '-vH'):
             args[i:i] = ('--',)
             break
 
     global opts
     opts = parser.parse_args(args)
     
-    generate(opts.format, opts.count)
+    try:
+        generate(opts.format, opts.count)
+    except BadFormatError as e:
+        parser.error("Bad format: " + str(e))
 
 class Charlist:
     Digits = "0123456789"
@@ -175,6 +212,9 @@ class Charlist:
     Hexadecimal = "0123456789abcdef"
     UpperHexadecimal = "0123456789ABCDEF"
     Base64 = AlphaNumeric + "+/"
+    Base64_FSSAFE = AlphaNumeric + "-_"
+    Base32 = Lower + '234567'
+    Base32Upper = Upper + '234567'
     Symbols = "".join(chr(c) for c in range(33,127))
 
     mapping = {
@@ -185,12 +225,15 @@ class Charlist:
         "x": Hexadecimal,
         "X": UpperHexadecimal,
         "B": Base64,
+        "b": Base64_FSSAFE,
         "s": Symbols,
         "alnum": AlphaNumeric,
         "digit": Digits,
         "lower": Lower,
         "upper": Upper,
-        "xdigit": Hexadecimal
+        "xdigit": Hexadecimal,
+        "base32": Base32,
+        "base32upper": Base32Upper
     }
 
 class Wordlist:
@@ -583,7 +626,7 @@ class Wordlist:
             self.corpus[target] = wlist
             return wlist
         except OSError as e:
-            raise BadFormatError("unknown wordlist {}: file {}: {}".format(target, fname, e))
+            raise BadFormatError("unknown wordlist {}:\n   Cannot load file {}: {}".format(target, fname, e))
 
 if __name__ == '__main__':
     main()
