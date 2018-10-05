@@ -21,15 +21,20 @@ def generate(fspec, count):
 
     The passes are formated according to <fspec>.
 
-    Returned value is (list, diagnostic string),
+    Returned value is (list, diagnostic_data),
     where list is a <count>-element sequence of
     pair of (password, reading hint for password).
+    diagnostic_data is a dict at least containing
+      key 'diag': (str) message for diagnostics,
+      key 'entropy': (float) estimated entropy of generated passwords.
 
     Raises BadFormatError if fspec is either bad or not able to be satisfied.
     """
 
     diag = []
     fspec, entropy = _parse_fspec(fspec, diag=diag)
+    if count < 1:
+        raise BadFormatError('bad count of passwords specified')
 
     result = []
     for ncount in range(count):
@@ -92,7 +97,7 @@ def generate(fspec, count):
 
         result.append((o, o_hint))
 
-    return result, "\n".join(diag)
+    return result, {'diag': "\n".join(diag), 'entropy': e}
 
 def _expand_subs(s):
     o = set()
@@ -196,6 +201,7 @@ password format specifier:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('-v', '--verbose', action='count', help='show some additional diagnostics', dest='verbose')
     parser.add_argument('-H', '--hint', action='store_true', help='show pronunciation hint')
+    parser.add_argument('--json', action='store_true', help='output formatted in json')
     parser.add_argument('--help', action='help', help='show this help message')
     parser.add_argument('format', help='password format')
     parser.add_argument('count', help='number of generated passwords', nargs='?', type=int, default=1)
@@ -217,13 +223,18 @@ password format specifier:
     except BadFormatError as e:
         parser.error("Bad format: " + str(e))
 
-    if opts.verbose:
-        print(diag, file=sys.stderr)
-    
-    for o, hint in l:
-        print(o)
-        if (opts.hint):
-            print("# " + hint + "\n")
+    if opts.json:
+        import json
+        o = diag.copy()
+        o['passwords'] = l
+        print(json.dumps(o, sort_keys=True, indent=4))
+    else:
+        if opts.verbose:
+            print(diag, file=sys.stderr)
+        for o, hint in l:
+            print(o)
+            if (opts.hint):
+                print("# " + hint + "\n")
 
     exit(0)
 
