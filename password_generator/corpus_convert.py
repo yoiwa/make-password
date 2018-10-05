@@ -87,7 +87,7 @@ class Romanization:
     dic = """   xa a xi i xu u xe e xo o ka ga ki gi ku gu ke ge ko go
                 sa za shi ji su zu se ze so zo ta da chi ji xtsu tsu zu te de to do
                 na ni nu ne no ha ba pa hi bi pi fu bu pu he be pe ho bo po
-                ma mi mu me mo xya ya xyu yu xyo yo ra ri ru re ro xwa wa wi we wo n vu xka xke""".split()
+                ma mi mu me mo xya ya xyu yu xyo yo ra ri ru re ro xwa wa wi we wo N vu xka xke""".split()
 
     @classmethod
     def romanization(self, s):
@@ -122,6 +122,9 @@ class Romanization:
         l = re.sub(r'xtsuch', 'tch', l)
         l = re.sub(r'xtsu([kgsztdnhbpfmurwv])', r'\1\1', l)
         l = re.sub(r'xtsu$', r't', l)
+        # N
+        #l = re.sub(r'N([aiueoy])', r'n\'\2', l)
+        l = re.sub(r'N', r'n', l)
         return l
 
 def fname_relative(base, fname):

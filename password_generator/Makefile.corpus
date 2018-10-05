@@ -3,7 +3,7 @@
 
 all: corpus/jwikipedia10k.corpus
 
-corpus/%.corpus: corpus_source/%.src Makefile.corpus
+corpus/%.corpus: corpus_source/%.src Makefile.corpus corpus_convert.py
 	python3 corpus_convert.py $< $@
 
 corpus/words.corpus: /usr/share/dict/words
