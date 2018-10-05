@@ -10,7 +10,7 @@ from random import SystemRandom
 from math import log2, ceil
 
 R = SystemRandom()
-# SystemRandom _is_ secure after Python 3.2, despite warnings in Python documents.
+# SystemRandom _is_ secure from Python 3.3, despite warnings in Python documents.
 # Indeed, the "secrets" module introduced in Python 3.6 is implemented upon SystemRandom.
 
 class BadFormatError(RuntimeError):
@@ -180,7 +180,7 @@ password format specifier:
       More word corpuses can be added from external sources.
 
     -e8, -j8 etc.: words separated by a hyphen as a separator
-                   (period is also accepted as a separator)
+            (period, comma, space, slash are also accepted as a separator)
 
     d8a8, d8-a8, -e8-d8 etc.: 
       multiple specifiers will be concatenated, possibly with separaters.
