@@ -11,23 +11,20 @@
 
 "This software" refers to all files except "external dictionaries".
 
-"External dictionaries" refers to all files named "*.corpus*",
-contained in the "corpus" directory.
+"External dictionaries" refers to all files in "corpus" and
+"corpus_source" directories.
 
 2. Terms and Conditions.
 
 This software is distributed under the terms of the Apache License
 2.0, available below.
 
-Each individual file contained in "external dictionaries" may be
-distributed under original licensing terms of its origins, specified
-in the file.
+Each individual file of "external dictionaries" may be distributed
+under original licensing terms of its origins, specified in the file.
 
 The "Licensor" and "the Original Authors" in this license text refer
 to "National Institute of Advanced Industrial Science and Technology"
 (AIST) in Japan.
-
-Files contained in corpus
 
 3. Choice of Law.
 
