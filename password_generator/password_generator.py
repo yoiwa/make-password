@@ -76,7 +76,7 @@ def generate(fspec, count):
         o_hint = "".join(o_hint)
 
         print(o)
-        if (opts.hint and o_hint != o):
+        if (opts.hint):
             print("# " + o_hint + "\n")
 
 def expand_subs(s):
@@ -203,19 +203,42 @@ password format specifier:
     except BadFormatError as e:
         parser.error("Bad format: " + str(e))
 
+
 class Charlist:
+    def _annotate(l):
+        _Annotations = {
+            '0': '[zero 0]',            'O': '[capital O]',
+            '1': '[one 1]',             'I': '[capital I]',             'l': '[lower l]',
+            '|': '[vert. bar |]',       '!': '[excl. mark !]',
+            '-': '[hyphen -]',          '~': '[symbol tilde ~]',        '_': '[underbar _]',
+            ',': '[comma ,]',           '.': '[period .]',
+            ';': '[semicolon ;]',       ':': '[colon :]',
+            '[': '[open bracket]',      ']': '[close bracket]',
+            '{': '[open brace]',        '}': '[close brace]',
+            '<': '[less than]',         '>': '[gtr. than]',
+            '(': '[open paren]',        ')': '[close paren]',
+            '"': '[dbl. quote "]',      "'": "[single quote ']",        '`': '[back quote `]',
+            "\\": '[back slash \\]',    "/": '[backslash /]',
+            '8': '[eight 8]',           '&': '[ampersand &]',
+            '%': '[percent %]',         '@': '[at mark @]',
+            '$': '[dollar $]',          '*': '[asterisk *]',            '#': '[number mark #]',
+            '+': '[plus +]',            '=': '[equals =]',              '^': '[circumflex ^]',
+        }
+
+        return [(x, _Annotations.get(x, x)) for x in l]
+
     Digits = "0123456789"
     Lower = "abcdefghojklmnopqrstuvwxyz"
     Upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    LowerAlphaNumeric = Digits + Lower
-    AlphaNumeric = LowerAlphaNumeric + Upper
+    LowerAlphaNumeric = _annotate(Digits + Lower)
+    AlphaNumeric = _annotate(Digits + Lower + Upper)
     Hexadecimal = "0123456789abcdef"
     UpperHexadecimal = "0123456789ABCDEF"
-    Base64 = AlphaNumeric + "+/"
-    Base64_FSSAFE = AlphaNumeric + "-_"
+    Base64 = AlphaNumeric + _annotate("+/")
+    Base64_FSSAFE = AlphaNumeric + _annotate("-_")
     Base32 = Lower + '234567'
     Base32Upper = Upper + '234567'
-    Symbols = "".join(chr(c) for c in range(33,127))
+    Symbols = _annotate(chr(c) for c in range(33,127))
 
     mapping = {
         "d": Digits,
