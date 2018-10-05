@@ -1,0 +1,4 @@
+#processor chasen
+input /usr/share/chasen/dic/naist-jdic-utf8/naist-jdic.dic
+copyright /usr/share/doc/naist-jdic/copyright
+copyright_section License

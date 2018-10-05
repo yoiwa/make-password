@@ -123,7 +123,7 @@ def parse_fspec(s):
 
         if subs:
             subse = expand_subs(subs)
-            wl = [w for w in wl if w[0] in subse]
+            wl = [w for w in wl if (w[0][0] if type(w) is tuple else w[0]) in subse]
             if len(wl) == 0:
                 raise BadFormatError("no words starting with [{}] in wordset {}".format(subs, pat))
             elif len(wl) == 1:
@@ -160,7 +160,7 @@ password format specifier:
     <wordset><numbers> (e8, [english]8, j8):
       words selected from wordset corpuses separated by spaces.
         e, [english]: ~2000-word Basic words in English,
-        E, [gutenberg10k]: ~10k word English from Gutenberg project, 
+        E, [gutenberg10k]: ~10k word English from Gutenberg project,
         j, [jwikipedia10k]: ~8k word Japanese romanization from Wikipedia.
       More word corpuses can be added from external sources.
 
@@ -559,7 +559,8 @@ class Wordlist:
     mapping = {
         "e": 'english',
         "E": 'gutenberg10k',
-        "j": 'jwikipedia10k'
+        "j": 'jwikipedia10k',
+        "J": 'naist-jdic',
     }
 
     corpus = {

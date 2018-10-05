@@ -1,8 +1,9 @@
 #!make -f
+.DELETE_ON_ERROR:
 
 all: corpus/jwikipedia10k.corpus
 
-corpus/%.corpus: corpus_source/%.src
+corpus/%.corpus: corpus_source/%.src Makefile.corpus
 	python3 corpus_convert.py $< $@
 
 corpus/words.corpus: /usr/share/dict/words
