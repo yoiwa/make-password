@@ -10,13 +10,28 @@ from random import SystemRandom
 from math import log2, ceil
 
 R = SystemRandom()
+# SystemRandom _is_ secure after Python 3.2, despite warnings in Python documents.
+# Indeed, the "secrets" module introduced in Python 3.6 is implemented upon SystemRandom.
 
 class BadFormatError(RuntimeError):
     pass
 
 def generate(fspec, count):
-    fspec, entropy = parse_fspec(fspec)
+    """Generate <count> number of random passwords/passphrases.
 
+    The passes are formated according to <fspec>.
+
+    Returned value is (list, diagnostic string),
+    where list is a <count>-element sequence of
+    pair of (password, reading hint for password).
+
+    Raises BadFormatError if fspec is either bad or not able to be satisfied.
+    """
+
+    diag = []
+    fspec, entropy = _parse_fspec(fspec, diag=diag)
+
+    result = []
     for ncount in range(count):
         e = 0.0
         o = []
@@ -45,12 +60,12 @@ def generate(fspec, count):
                     ct = 0
                 else:
                     ct = int(ceil((entropy - e) / e1))
-                if ncount == 0 and opts.verbose and ct > 0:
-                    print("Entropy computation: {0:.3f} * {2:d} = {3:.3f} bits".format(e1, e, ct, ct * e1), file=sys.stderr)
+                if ncount == 0 and ct > 0:
+                    diag.append("Entropy computation: {0:.3f} * {2:d} = {3:.3f} bits".format(e1, e, ct, ct * e1))
                 e += ct * e1
             else:
-                if ncount == 0 and opts.verbose:
-                    print("Entropy computation: {0:.3f} * {2:d} = {3:.3f} bits".format(e1, e, ct, ct * e1), file=sys.stderr)
+                if ncount == 0:
+                    diag.append("Entropy computation: {0:.3f} * {2:d} = {3:.3f} bits".format(e1, e, ct, ct * e1))
                 e += ct * e1
 
             for c in range(0, ct):
@@ -70,16 +85,16 @@ def generate(fspec, count):
         while(entropy != None and e < entropy):
             proc(True, *(fspec[-1]))
 
-        if ncount == 0 and opts.verbose:
-            print("Entropy computation: total generated entropy {:.3f} bits".format(e), file=sys.stderr)
+        if ncount == 0:
+            diag.append("Entropy computation: total generated entropy {:.3f} bits".format(e))
         o = "".join(o)
         o_hint = "".join(o_hint)
 
-        print(o)
-        if (opts.hint):
-            print("# " + o_hint + "\n")
+        result.append((o, o_hint))
 
-def expand_subs(s):
+    return result, "\n".join(diag)
+
+def _expand_subs(s):
     o = set()
     while s != '':
         mo = re.match(r'\A(.)(?:-(.))?(.*)\Z', s)
@@ -93,7 +108,7 @@ def expand_subs(s):
     r = "".join(chr(x) for x in o)
     return r
 
-def parse_fspec(s):
+def _parse_fspec(s, *, diag=None):
     o = []
     i = 0
     orig_s = s
@@ -118,11 +133,11 @@ def parse_fspec(s):
             wl = Charlist.mapping[pat]
             iswords = False
         else:
-            wl = Wordlist.load_wordlist(pat)
+            wl = Wordlist.load_wordlist(pat, diag=diag)
             iswords = True
 
         if subs:
-            subse = expand_subs(subs)
+            subse = _expand_subs(subs)
             wl = [w for w in wl if (w[0][0] if type(w) is tuple else w[0]) in subse]
             if len(wl) == 0:
                 raise BadFormatError("no words starting with [{}] in wordset {}".format(subs, pat))
@@ -195,14 +210,22 @@ password format specifier:
             args[i:i] = ('--',)
             break
 
-    global opts
     opts = parser.parse_args(args)
     
     try:
-        generate(opts.format, opts.count)
+        l, diag = generate(opts.format, opts.count)
     except BadFormatError as e:
         parser.error("Bad format: " + str(e))
 
+    if opts.verbose:
+        print(diag, file=sys.stderr)
+    
+    for o, hint in l:
+        print(o)
+        if (opts.hint):
+            print("# " + hint + "\n")
+
+    exit(0)
 
 class Charlist:
     def _annotate(l):
@@ -593,7 +616,7 @@ class Wordlist:
 
     base_path = None
     @classmethod
-    def load_wordlist(self, target):
+    def load_wordlist(self, target, *, diag=None):
         if target in self.mapping:
             target = self.mapping[target]
         if target in self.corpus:
@@ -643,8 +666,8 @@ class Wordlist:
                             else:
                                 wlist.add(word)
             wlist = list(sorted(wlist))
-            if opts.verbose:
-                print("loaded {} words of corpus as {}".format(len(wlist), target), file=sys.stderr)
+            if diag != None:
+                diag.append("loaded {} words of corpus as {}".format(len(wlist), target))
             if (len(wlist) == 0):
                 raise BadFormatError("empty or bad corpus:" + target)
             self.corpus[target] = wlist
