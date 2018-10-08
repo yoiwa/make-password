@@ -36,11 +36,14 @@ def generate(fspec, count):
     if count < 1:
         raise BadFormatError('bad count of passwords specified')
 
+    elements = []
     result = []
     for ncount in range(count):
         e = 0.0
         o = []
-        o_hint = []
+
+        def elem(e, f, o, h):
+            return {'entropy': e, 'separator': f, 'password': o, 'hint': h }
 
         def proc(filling, i, sep, wl, iswords, ct):
             nonlocal e
@@ -48,12 +51,6 @@ def generate(fspec, count):
             nonlocal o_hint
 
             initial = not filling and i == 0
-            if iswords:
-                intersep = sep if sep != "" else " "
-                presep = "" if initial else sep if sep != "" else " "
-            else:
-                intersep = ""
-                presep = "" if initial else sep
 
             l1 = len(wl)
             e1 = log2(l1)
@@ -73,17 +70,34 @@ def generate(fspec, count):
                     diag.append("Entropy computation: {0:.3f} * {2:d} = {3:.3f} bits".format(e1, e, ct, ct * e1))
                 e += ct * e1
 
-            for c in range(0, ct):
-                w = wl[R.randrange(l1)]
-                if type(w) is tuple:
-                    w, h = w
-                else:
-                    w, h = w, w
-                s = presep if c == 0 else intersep
-                o.append(s)
-                o.append(w)
-                o_hint.append(s)
-                o_hint.append(h)
+            if iswords:
+                intersep = sep if sep != "" else " "
+                presep = "" if initial else sep if sep != "" else " "
+                for c in range(0, ct):
+                    w = wl[R.randrange(l1)]
+                    if type(w) is tuple:
+                        w, h = w
+                    else:
+                        w, h = w, w
+                    s = presep if c == 0 else intersep
+                    if s: o.append(elem(0.0, False, s, s))
+                    o.append(elem(e1, True, w, h))
+            else:
+                if ct != 0:
+                    intersep = ""
+                    presep = "" if initial else sep
+                    if presep: o.append(elem(0.0, False, presep, presep))
+                    ow = []
+                    oh = []
+                    for c in range(0, ct):
+                        w = wl[R.randrange(l1)]
+                        if type(w) is tuple:
+                            w, h = w
+                        else:
+                            w, h = w, w
+                        ow.append(w)
+                        oh.append(h)
+                    o.append(elem(ct * e1, True, "".join(ow), "".join(oh)))
 
         for i in fspec:
             proc(False, *i)
@@ -92,12 +106,14 @@ def generate(fspec, count):
 
         if ncount == 0:
             diag.append("Entropy computation: total generated entropy {:.3f} bits".format(e))
-        o = "".join(o)
-        o_hint = "".join(o_hint)
 
-        result.append((o, o_hint))
+        o_word = "".join(x['password'] for x in o)
+        o_hint = "".join(x['hint'] for x in o)
 
-    return result, {'diag': "\n".join(diag), 'entropy': e}
+        elements.append(o)
+        result.append((o_word, o_hint))
+
+    return result, {'passwords': result, 'elements': elements, 'diag': "\n".join(diag), 'entropy': e}
 
 def _expand_subs(s):
     o = set()
@@ -225,12 +241,10 @@ password format specifier:
 
     if opts.json:
         import json
-        o = diag.copy()
-        o['passwords'] = l
-        print(json.dumps(o, sort_keys=True, indent=4))
+        print(json.dumps(diag, sort_keys=True, indent=4))
     else:
         if opts.verbose:
-            print(diag, file=sys.stderr)
+            print(diag['diag'], file=sys.stderr)
         for o, hint in l:
             print(o)
             if (opts.hint):
