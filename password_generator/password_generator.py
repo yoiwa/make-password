@@ -217,6 +217,7 @@ password format specifier:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('-v', '--verbose', action='count', help='show some additional diagnostics', dest='verbose')
     parser.add_argument('-H', '--hint', action='store_true', help='show pronunciation hint')
+    parser.add_argument('-U', '--force-unicode', action='store_true', help='enforce UTF-8 output')
     parser.add_argument('--json', action='store_true', help='output formatted in json')
     parser.add_argument('--help', action='help', help='show this help message')
     parser.add_argument('format', help='password format')
@@ -228,12 +229,14 @@ password format specifier:
         s = args[i]
         if (s == '--'):
             break
-        if (len(s) >= 2 and s[0] == '-' and s[1] not in '-vH'):
+        if (len(s) >= 2 and s[0] == '-' and s[1] not in '-vHU'):
             args[i:i] = ('--',)
             break
 
     opts = parser.parse_args(args)
-    
+
+    set_stdout_encoding(opts.force_unicode)
+
     try:
         l, diag = generate(opts.format, opts.count)
     except BadFormatError as e:
@@ -251,6 +254,24 @@ password format specifier:
                 print("# " + hint + "\n")
 
     exit(0)
+
+def set_stdout_encoding(forced):
+    import codecs
+    encoding = sys.stdout.encoding
+    ename = codecs.lookup(encoding).name
+
+    if ename == 'utf-8':
+        return
+
+    if ename == 'ascii' or forced:
+        new_ename = 'utf-8'
+    else:
+        new_ename = ename
+
+    if hasattr(type(sys.stdout), 'reconfigure'):
+        sys.stdout.reconfigure(encoding=new_ename, errors='namereplace')
+    else:
+        sys.stdout = type(sys.stdout)(sys.stdout.buffer, encoding=new_ename, errors='namereplace')
 
 class Charlist:
     def _annotate(l):
@@ -656,7 +677,7 @@ class Wordlist:
         hinted = False
         in_header = True
         try:
-            with open(fname, 'r') as f:
+            with open(fname, 'r', encoding='utf-8') as f:
                 wlist = set()
                 for l in f:
                     l = l.strip()

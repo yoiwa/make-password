@@ -139,7 +139,7 @@ def extract_copyright(fname, section, quote = "# "):
     secstart = True
     active = False
     o = []
-    with open(fname) as src:
+    with open(fname, encoding='utf-8') as src:
         for line in src:
             l = line.rstrip()
             if l == '':
@@ -237,7 +237,7 @@ class CorpusConvert:
         excludes = config.get('excludes', "").split()
         hiragana_penalty = int(config.get('hiragana-penalty', 0))
 
-        with open(dic_fname) as dic:
+        with open(dic_fname, encoding='utf-8') as dic:
             words = []
             lno = 0
             for s in dic:
@@ -303,8 +303,8 @@ class CorpusConvert:
     def convert(self, fname, ofname):
         hdr = ""
         processor = None
-        with open(fname) as src:
-            with open(fname) as src2:
+        with open(fname, encoding='utf-8') as src:
+            with open(fname, encoding='utf-8') as src2:
                 while True:
                     ll = src2.readline()
                     l = ll.strip()
@@ -320,7 +320,7 @@ class CorpusConvert:
                     else:
                         raise RuntimeError("Unkown header:", p)
             fun = getattr(self, processor)
-            with open(ofname, 'w') as dest:
+            with open(ofname, 'w', encoding='utf-8') as dest:
                 b = boilerplate + hdr
                 fun(src, fname, dest, boilerplate = b)
 
