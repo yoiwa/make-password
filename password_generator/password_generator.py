@@ -80,13 +80,13 @@ def generate(fspec, count):
                     else:
                         w, h = w, w
                     s = presep if c == 0 else intersep
-                    if s: o.append(elem(0.0, False, s, s))
-                    o.append(elem(e1, True, w, h))
+                    if s: o.append(elem(0.0, True, s, s))
+                    o.append(elem(e1, False, w, h))
             else:
                 if ct != 0:
                     intersep = ""
                     presep = "" if initial else sep
-                    if presep: o.append(elem(0.0, False, presep, presep))
+                    if presep: o.append(elem(0.0, True, presep, presep))
                     ow = []
                     oh = []
                     for c in range(0, ct):
@@ -97,7 +97,7 @@ def generate(fspec, count):
                             w, h = w, w
                         ow.append(w)
                         oh.append(h)
-                    o.append(elem(ct * e1, True, "".join(ow), "".join(oh)))
+                    o.append(elem(ct * e1, False, "".join(ow), "".join(oh)))
 
         for i in fspec:
             proc(False, *i)
@@ -182,10 +182,24 @@ def _parse_fspec(s, *, diag=None):
     entropy = entropy and float(entropy)
     return (o, entropy)
 
-def main():
-    import argparse
+def parse_commandline(parser):
+    # preprocess arguments:
+    args = sys.argv[1:]
+    for i in range(len(args)):
+        s = args[i]
+        if (s == '--'):
+            break
+        if (len(s) >= 2 and s[0] == '-'):
+            c = s[1]
+            if (c == '[' or
+                c in Charlist.mapping or
+                c in Wordlist.mapping):
+                args[i:i] = ('--',)
+                break
 
-    helpstr = """
+    return parser.parse_args(args)
+
+format_helpstr = """
 password format specifier:
     <charset><numbers> (d8, A8, x8 etc...):
       sequences of characters from predefined sets.
@@ -211,8 +225,11 @@ password format specifier:
       until generated passwords have <n>-bit of entropy (possibility).
 """
 
+def main():
+    import argparse
+
     parser = argparse.ArgumentParser(description='Generate password candidates',
-                                     epilog=helpstr,
+                                     epilog=format_helpstr,
                                      add_help=False,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('-v', '--verbose', action='count', help='show some additional diagnostics', dest='verbose')
@@ -223,17 +240,7 @@ password format specifier:
     parser.add_argument('format', help='password format')
     parser.add_argument('count', help='number of generated passwords', nargs='?', type=int, default=1)
 
-    # preprocess arguments:
-    args = sys.argv[1:]
-    for i in range(len(args)):
-        s = args[i]
-        if (s == '--'):
-            break
-        if (len(s) >= 2 and s[0] == '-' and s[1] not in '-vHU'):
-            args[i:i] = ('--',)
-            break
-
-    opts = parser.parse_args(args)
+    opts = parse_commandline(parser)
 
     set_stdout_encoding(opts.force_unicode)
 
@@ -651,7 +658,7 @@ class Wordlist:
     mapping = {
         "e": 'english',
         "E": 'gutenberg10k',
-        "j": 'jwikipedia10k',
+        "j": 'naist-jdic-simple',
         "J": 'naist-jdic',
     }
 
