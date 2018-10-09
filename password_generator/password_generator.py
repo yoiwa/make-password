@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-# make-password: password/dictionary-based passphrase generator.
+# make-password: passphrase generator with dictionary corpus support.
 # Written by Yutaka OIWA (AIST).
 # (c) 2018 National Institute of Advanced Industrial Science and Technology.
 # See LICENSE file copyright detials.
@@ -204,11 +204,11 @@ password format specifier:
             (period, comma, space, slash are also accepted as a separator)
 
     d8a8, d8-a8, -e8-d8 etc.: 
-      multiple specifiers will be concatenated, possibly with separaters.
+      multiple specifiers can be concatenated with optional separators,
 
     d:128, e:128, -e:128, d8-a:128, -a5:128: 
-      ":<n>" requests the last element to be repeated
-      until the generated password contains <n>-bit of possibilities.
+      ":<bits>" makes the last specifier to be repeated
+      until generated passwords have <n>-bit of entropy (possibility).
 """
 
     parser = argparse.ArgumentParser(description='Generate password candidates',
