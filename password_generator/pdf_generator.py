@@ -154,6 +154,9 @@ def generate_textfile(fname, dat, encrypt_to):
         else:
             print(dat, end="", file=f)
 
+def wifi_quote(s):
+    return re.sub(r'([\\",;:])', r'\\\1', s)
+
 def main():
     if __name__ == '__main__':
         import password_generator
@@ -249,7 +252,11 @@ def main():
 
     if opts.qrcode:
         import qrcode
-        qr = qrcode.make("".join(w))
+        if opts.wifi_ssid:
+            qr_dat = 'WIFI:T:WPA;S:"{}";P:"{}";;'.format(wifi_quote(opts.wifi_ssid), wifi_quote(password))
+        else:
+            qr_dat = password
+        qr = qrcode.make(qr_dat)
         qr = qr.get_image()
         qr = ImageReader(qr)
     else:
