@@ -94,6 +94,7 @@ def draw_card(c, dat, x = 0.0, y = 0.0, qr=None, pdfargs={}):
     starty = y + cinnermargin + lineheight * (len(pwd) - 1)
 
     twidth = pwidth = cardwidth - cinnermargin * 2
+    hwidth = 0.0
     if (pwdhints):
         pwidth = twidth * 5.0 / 8.0
         hwidth = twidth * 3.0 / 8.0
