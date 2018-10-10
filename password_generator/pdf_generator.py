@@ -178,7 +178,7 @@ def main():
     outgroup.add_argument('-o', '--output', help='output file name')
     outgroup.add_argument('-O', '--output-base', help='output related data to specified basename or directory')
 
-    parser.add_argument('--gpg-encrypt-to', help='encrypt plaintext output by gpg')
+    parser.add_argument('--gpg-encrypt-to', help='encrypt plaintext output by gpg', metavar='EMAIL')
     parser.add_argument('--encrypt', action='store_true',
                         help=argparse.SUPPRESS #'encrypt PDF output by generated password itself'
     ) # ReportLab bug: encryption with CID font generates buggy PDF.

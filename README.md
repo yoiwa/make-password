@@ -163,8 +163,8 @@ _Note: as easily guessed, all of example outputs above are *intentionally* non-r
  * -o OUTPUT.pdf: write a generated PDF file to 'OUTPUT.pdf'.
  * -O BASE: save output data to filenames based on BASE.
    More details are described later. Either -o or -O is mandatory.
- * --gpg-encrypt-to email: With an -O option, encrypt output files
-   _except the PDF sheet_ to that email address by GnuPG.
+ * --gpg-encrypt-to: with an -O option, encrypt text output files
+   (_except the PDF sheet_) to that email address by GnuPG.
 
  * format: specifies a style of passphrases, as described before.
  
