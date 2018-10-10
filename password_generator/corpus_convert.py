@@ -3,6 +3,7 @@ import subprocess
 import io
 import re
 import threading
+import json
 from contextlib import ExitStack
 
 boilerplate = """### Generated file. DO NOT EDIT.
@@ -139,6 +140,7 @@ def extract_copyright(fname, section, quote = "# "):
     secstart = True
     active = False
     o = []
+    sections = json.loads(section)
     with open(fname, encoding='utf-8') as src:
         for line in src:
             l = line.rstrip()
@@ -149,7 +151,10 @@ def extract_copyright(fname, section, quote = "# "):
 
             if secstart:
                 secstart = False
-                active = l.startswith(section)
+                active = False
+                for section in sections:
+                    if l.startswith(section):
+                        active = True
                 continue
 
             if active:

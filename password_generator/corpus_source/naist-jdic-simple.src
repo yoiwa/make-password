@@ -1,7 +1,7 @@
 #processor chasen
 input /usr/share/chasen/dic/naist-jdic-utf8/naist-jdic.dic
 copyright /usr/share/doc/naist-jdic/copyright
-copyright_section License
+copyright_section ["License", "Files: *"]
 includes 名詞
 excludes 固有名詞
 hiragana-penalty 500

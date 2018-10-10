@@ -205,13 +205,14 @@ password format specifier:
       sequences of characters from predefined sets.
         d: digits l: lowercase a: lowercase + digits, 
         A: lowercase + upper + digits, x,X: hexadecimal, 
-        B: Base64, b: Base64-FSSAFE, s: ASCII printable symbols
+        B: Base64, b: Base64-FSSAFE, s: ASCII printable symbols.
 
     <wordset><numbers> (e8, [english]8, j8):
       words selected from wordset corpuses separated by spaces.
-        e, [english]: ~2000-word Basic words in English,
-        E, [gutenberg10k]: ~10k word English from Gutenberg project,
-        j, [jwikipedia10k]: ~8k word Japanese romanization from Wikipedia.
+        e: ~2k word   Basic words in English,
+        E: ~10k word  English from Gutenberg project,
+        j: ~37k word  Japanese romanization from NAIST-JDIC.
+        J: ~132k word Japanese romanization from NAIST-JDIC.
       More word corpuses can be added from external sources.
 
     -e8, -j8 etc.: words separated by a hyphen as a separator
