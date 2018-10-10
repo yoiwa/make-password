@@ -4,7 +4,15 @@
 # (c) 2018 National Institute of Advanced Industrial Science and Technology.
 # See LICENSE file copyright detials.
 
+import math
+import sys
+import os
+import re
+import json
+import subprocess
+
 from reportlab.pdfgen import canvas
+from reportlab.lib import pdfencrypt
 from reportlab.lib.pagesizes import A4, portrait
 from reportlab.lib.utils import ImageReader
 from reportlab.lib.units import cm, mm, inch
@@ -12,10 +20,6 @@ from reportlab.pdfbase import pdfmetrics
 #from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.pdfbase.pdfmetrics import stringWidth
-
-import sys
-import math
-import re
 
 pt = inch / 72.0
 
@@ -27,28 +31,6 @@ pdfmetrics.registerFont(UnicodeCIDFont('HeiseiKakuGo-W5'))
 PwdFont = ('Courier-Bold', 12)
 HintFontJ = ('HeiseiKakuGo-W5', 9)
 HintFontE = ('Times-Bold', 9)
-
-cardheight = 55 * mm
-cardwidth = 91 * mm
-cinnermargin = 7 * mm
-
-lmargin = 14 * mm
-bmargin = 11 * mm
-
-def prepare_canvas(fname, size):
-    if isinstance(fname, str):
-        c = canvas.Canvas(fname, pagesize=size)
-        return c
-    else:
-        return fname
-
-def draw_sheet10(c, dat, qr=None):
-    width, height = A4
-    c = prepare_canvas(c, portrait(A4))
-    for xx in range(2):
-        for yy in range(5):
-            draw_card(c, dat, lmargin + cardwidth * xx, bmargin + cardheight * yy, qr=qr)
-    return c
 
 def draw_text_fitted(c, x, y, width, height, font, maxsize, text, *, maxshrink=1.0, centered=False):
     fsize = min(height, maxsize)
@@ -71,8 +53,31 @@ def draw_text_fitted(c, x, y, width, height, font, maxsize, text, *, maxshrink=1
     to.textOut(text)
     c.drawText(to)
 
-def draw_card(c, dat, x = 0.0, y = 0.0, qr=None):
-    c = prepare_canvas(c, (cardwidth, cardheight))
+cardheight = 55 * mm
+cardwidth = 91 * mm
+cinnermargin = 7 * mm
+
+lmargin = 14 * mm
+bmargin = 11 * mm
+
+def prepare_canvas(c_or_fname, size, pdfargs={}):
+    if isinstance(c_or_fname, str):
+        c = canvas.Canvas(c_or_fname, pagesize=size, **pdfargs)
+        return c
+    else:
+        return c_or_fname
+
+def draw_sheet10(c, dat, qr=None, pdfargs={}):
+    width, height = A4
+    c = prepare_canvas(c, portrait(A4), pdfargs)
+    for xx in range(2):
+        for yy in range(5):
+            draw_card(c, dat, lmargin + cardwidth * xx, bmargin + cardheight * yy, qr=qr)
+    return c
+
+def draw_card(c, dat, x = 0.0, y = 0.0, qr=None, pdfargs={}):
+    c = prepare_canvas(c, (cardwidth, cardheight), pdfargs)
+
     c.setStrokeColorRGB(0.9, 0.9, 0.9)
     c.rect(x, y, cardwidth, cardheight, fill=0)
 
@@ -139,6 +144,16 @@ def draw_card(c, dat, x = 0.0, y = 0.0, qr=None):
                     width = qwidth, height = qwidth)
     return c
 
+def generate_textfile(fname, dat, encrypt_to):
+    with open(fname, 'w', encoding='utf-8', errors='replace') as f:
+        if encrypt_to:
+            subprocess.run(['gpg', '-ae', '-r', encrypt_to, '-'],
+                           input=dat.encode('utf-8', errors='replace'),
+                           stdout=f,
+                           check=True)
+        else:
+            print(dat, end="", file=f)
+
 def main():
     if __name__ == '__main__':
         import password_generator
@@ -153,35 +168,55 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('-H', '--hint', action='store_true', help='show pronunciation hint')
     parser.add_argument('-Q', '--qrcode', action='store_true', help='generate QR-code as well')
-    parser.add_argument('-o', '--output', help='output file name', required=True)
-    parser.add_argument('format', help='password format')
+    parser.add_argument('--wifi-ssid', help='generate WiFi WPA QRcode')
+
+    outgroup = parser.add_mutually_exclusive_group(required=True)
+    outgroup.add_argument('-o', '--output', help='output file name')
+    outgroup.add_argument('-O', '--output-base', help='output related data to specified basename or directory')
+
+    parser.add_argument('--gpg-encrypt-to', help='encrypt plaintext output by gpg')
+    parser.add_argument('--encrypt', action='store_true',
+                        help=argparse.SUPPRESS #'encrypt PDF output by generated password itself'
+    ) # ReportLab bug: encryption with CID font generates buggy PDF.
+
+    parser.add_argument('-L', '--layout', help='card layout (1 or 10)', choices=('1', '10'), default='1')
+    parser.add_argument('--json', action='store_true',help='reuse previous passphrase data in JSON format')
+    parser.add_argument('format', help='password format (or JSON filename with --json)')
     parser.add_argument('count', help='number of generated passwords', nargs='?', type=int, default=1)
     parser.add_argument('--help', action='help', help='show this help message')
 
     opts = password_generator.parse_commandline(parser)
 
-    while True:
-        l, diag = password_generator.generate(opts.format, opts.count)
-        if opts.count == 1:
-            l = 1
-            break
+    if opts.json:
+        if opts.format == '-':
+            json_dat = json.load(sys.stdin)
+        else:
+            with open(opts.format, 'r', encoding='utf-8') as rf:
+                json_dat = json.load(rf)
 
-        for i in range(len(l)):
-            print("{:2d}:  {}\n    ({})\n".format(i + 1, *l[i]))
+    else:
+        while True:
+            l, diag = password_generator.generate(opts.format, opts.count)
+            if opts.count == 1:
+                l = 1
+                break
 
-        print("Which one? (1-{}, RET for another set)".format(len(l)))
+            for i in range(len(l)):
+                print("{:2d}:  {}\n    ({})\n".format(i + 1, *l[i]))
 
-        l = sys.stdin.readline().strip()
+            print("Which one? (1-{}, RET for another set)".format(len(l)))
 
-        if l != "":
-            break
+            l = sys.stdin.readline().strip()
 
-    n = diag['elements'][int(l) - 1]
+            if l != "":
+                break
+
+        json_dat = diag['elements'][int(l) - 1]
 
     w = []
     h = []
 
-    for dic in n:
+    for dic in json_dat:
         if not dic['separator']:
             w.append(dic['password'])
             h.append(dic['hint'])
@@ -193,11 +228,23 @@ def main():
             w[-1] += dic['password']
             h[-1] += dic['hint']
 
+    password = "".join(w)
+
+    if opts.output_base:
+        base, sep, out = opts.output_base.rpartition('/')
+        if sep:
+            os.makedirs(base, mode=0o700, exist_ok=True)
+        output_base = opts.output_base if out != '' else opts.output_base + "password"
+        output = output_base + ".pdf"
+    else:
+        output_base = None
+        output = opts.output
+
     if opts.hint:
-        print("\nGenerated password: {}\n                   ({})".format("".join(w), "".join(h)))
+        print("\nGenerated password: {}\n                   ({})".format(password, "".join(h)))
         dat = (w, h)
     else:
-        print("\nGenerated password: {}".format("".join(w)))
+        print("\nGenerated password: {}".format(password))
         dat = (w, None)
 
     if opts.qrcode:
@@ -208,9 +255,23 @@ def main():
     else:
         qr = None
 
-    c = draw_sheet10(opts.output, dat, qr=qr)
+    os.umask(os.umask(0o077) | 0o077)
+
+    if opts.encrypt:
+        enc = pdfencrypt.StandardEncryption(password + "--usr", password, strength=128)
+    else:
+        enc = None
+    if opts.layout == '10':
+        draw = draw_sheet10
+    else:
+        draw = draw_card
+    c = draw(output, dat, qr=qr, pdfargs={'encrypt': enc})
     c.showPage()
     c.save()
+
+    if output_base:
+        generate_textfile(output_base + ".txt", password, encrypt_to=opts.gpg_encrypt_to)
+        generate_textfile(output_base + ".json", json.dumps(json_dat, sort_keys=True, indent=4), encrypt_to=opts.gpg_encrypt_to)
 
 if __name__ == '__main__':
     main()
