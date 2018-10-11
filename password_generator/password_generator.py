@@ -9,6 +9,8 @@ import re
 from random import SystemRandom
 from math import log2, ceil
 
+VERSION = '1.0alpha1'
+
 R = SystemRandom()
 # SystemRandom _is_ secure from Python 3.3, despite warnings in Python documents.
 # Indeed, the "secrets" module introduced in Python 3.6 is implemented upon SystemRandom.
@@ -71,8 +73,8 @@ def generate(fspec, count):
                 e += ct * e1
 
             if iswords:
-                intersep = sep if sep != "" else " "
-                presep = "" if initial else sep if sep != "" else " "
+                intersep = sep if sep != None else " "
+                presep = "" if initial else sep if sep != None else " "
                 for c in range(0, ct):
                     w = wl[R.randrange(l1)]
                     if type(w) is tuple:
@@ -80,7 +82,8 @@ def generate(fspec, count):
                     else:
                         w, h = w, w
                     s = presep if c == 0 else intersep
-                    if s: o.append(elem(0.0, True, s, s))
+                    sh = " " if (s == "" and c != 0) else s
+                    if sh: o.append(elem(0.0, True, s, sh))
                     o.append(elem(e1, False, w, h))
             else:
                 if ct != 0:
@@ -129,13 +132,20 @@ def _expand_subs(s):
     r = "".join(chr(x) for x in o)
     return r
 
+def _remove_backslash(s):
+    if s == None: return None
+    return re.sub(r"\\(.)", r"\1", s)
+
 def _parse_fspec(s, *, diag=None):
     o = []
     i = 0
     orig_s = s
     while(s != ""):
         mo = re.match(r"""\A
-                          (?P<sep>[\ \-/,.]?)
+                          (?:
+                             (?P<sep1>[\ \-/,.])
+                            |"(?P<sep2>(?:[^\\\"]|\\.)*)"
+                          )?
                           (?:
                              (?P<pat1>[a-zA-Z])
                             |\[:?
@@ -147,7 +157,8 @@ def _parse_fspec(s, *, diag=None):
 
         if not mo:
             break
-        (sep, pat1, pat2, subs, dig, s) = mo.group('sep', 'pat1', 'pat2', 'subs', 'dig', 'rest')
+        (sep1, sep2, pat1, pat2, subs, dig, s) = mo.group('sep1', 'sep2', 'pat1', 'pat2', 'subs', 'dig', 'rest')
+        sep = sep1 or _remove_backslash(sep2)
         pat = pat1 or pat2
 
         if pat in Charlist.mapping:
@@ -168,7 +179,7 @@ def _parse_fspec(s, *, diag=None):
         if len(wl) <= 1:
             raise BadFormatError("not enough candidate in wordset {}".format(subs, pat))
 
-        o.append((i, (sep or ""), wl, iswords, (int(dig) if dig != '' else 0)))
+        o.append((i, sep, wl, iswords, (int(dig) if dig != '' else 0)))
         i += 1
 
     mo = re.match(r"\A(?: *:(\d+))?\Z", s)
@@ -229,7 +240,7 @@ password format specifier:
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(description='Generate password candidates',
+    parser = argparse.ArgumentParser(description='Generate passphrase candidates',
                                      epilog=format_helpstr,
                                      add_help=False,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -237,7 +248,8 @@ def main():
     parser.add_argument('-H', '--hint', action='store_true', help='show pronunciation hint')
     parser.add_argument('-U', '--force-unicode', action='store_true', help='enforce UTF-8 output')
     parser.add_argument('--json', action='store_true', help='output formatted in json')
-    parser.add_argument('--help', action='help', help='show this help message')
+    parser.add_argument('--help', action='help', help='show this help message and exit')
+    parser.add_argument('--version', action='version', version='%(prog)s ' + VERSION)
     parser.add_argument('format', help='password format')
     parser.add_argument('count', help='number of generated passwords', nargs='?', type=int, default=1)
 
@@ -304,17 +316,19 @@ class Charlist:
 
         return [(x, _Annotations.get(x, x)) for x in l]
 
+    # raw sets
     Digits = "0123456789"
     Lower = "abcdefghojklmnopqrstuvwxyz"
     Upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    LowerAlphaNumeric = _annotate(Digits + Lower)
-    AlphaNumeric = _annotate(Digits + Lower + Upper)
     Hexadecimal = "0123456789abcdef"
     UpperHexadecimal = "0123456789ABCDEF"
-    Base64 = AlphaNumeric + _annotate("+/")
-    Base64_FSSAFE = AlphaNumeric + _annotate("-_")
     Base32 = Lower + '234567'
     Base32Upper = Upper + '234567'
+    # annotated sets
+    LowerAlphaNumeric = _annotate(Digits + Lower)
+    AlphaNumeric = _annotate(Digits + Lower + Upper)
+    Base64 = AlphaNumeric + _annotate("+/")
+    Base64_FSSAFE = AlphaNumeric + _annotate("-_")
     Symbols = _annotate(chr(c) for c in range(33,127))
 
     mapping = {

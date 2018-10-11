@@ -110,8 +110,18 @@ Separators can be put before or between mnemonics to separate words.
 
  * `-E4`: use hyphen between words (e.g. `anyone-become-calendar`)
  * `,j3`: use comma between words (e.g. `angou,butsuri,cha`)
+ * `"@"E3`: use at-mark between words (e.g. `anyone@become@calendar`)
+ * `""E3`: no spaces between words (e.g. `anyonebecomecalendar`)
  * `a8-d8`: put hyphen between alphabet password and digits
    (e.g. `abcdefgh-12345678`)
+
+Allowed separators are space, hyphen, comma, underbar, period or any
+double-quoted string. Please note that use of space or
+double-quotation will need single-quoting for the whole format spec
+on most shell environment.  
+(e.g. `make-password '""E3'` or `make-password 'a8 d8'`)  
+If no separator is given, dictionary-words are space-separated and
+characters are not separated by default.
 
 And, the most important feature of the format specification is an
 entropy specifier: a colon followed by a decimal number at the end
