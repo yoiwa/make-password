@@ -32,8 +32,16 @@ PwdFont = ('Courier-Bold', 12)
 HintFontJ = ('HeiseiKakuGo-W5', 9)
 HintFontE = ('Times-Bold', 9)
 
-def draw_text_fitted(c, x, y, width, height, font, maxsize, text, *, maxshrink=1.0, centered=False):
+DEBUGBOX = False
+
+def draw_text_fitted(c, x, y, width, height, font, maxsize, text, *, maxshrink=1.0, efont=None, centered=False):
+    c.setStrokeColorRGB(0.9, 0.9, 0.9)
+    if DEBUGBOX: c.rect(x, y, width, height, fill=0)
+
     fsize = min(height, maxsize)
+    if efont and re.match(r'\A[ -\u00FF]*\Z', text):
+        font = efont
+
     w = stringWidth(text, font, fsize)
     scale = 1.0
     if w > width:
@@ -47,7 +55,7 @@ def draw_text_fitted(c, x, y, width, height, font, maxsize, text, *, maxshrink=1
         x += (width - w * scale) / 2
 
     to = c.beginText()
-    to.setTextOrigin(x, y)
+    to.setTextOrigin(x, y + (height - fsize) / 2.0)
     to.setFont(font, fsize)
     to.setHorizScale(scale * 100.0)
     to.textOut(text)
@@ -67,15 +75,19 @@ def prepare_canvas(c_or_fname, size, pdfargs={}):
     else:
         return c_or_fname
 
-def draw_sheet10(c, dat, qr=None, pdfargs={}):
+def draw_sheet10(c, dat, pdfargs={}, **kwargs):
     width, height = A4
     c = prepare_canvas(c, portrait(A4), pdfargs)
     for xx in range(2):
         for yy in range(5):
-            draw_card(c, dat, lmargin + cardwidth * xx, bmargin + cardheight * yy, qr=qr)
+            draw_card(c, dat, lmargin + cardwidth * xx, bmargin + cardheight * yy, **kwargs)
     return c
 
-def draw_card(c, dat, x = 0.0, y = 0.0, qr=None, pdfargs={}):
+def draw_card(c, dat, x = 0.0, y = 0.0, qr=None, title=None, hint=False, partpwd=True, pdfargs={}):
+    """
+    Draw one strip of password reminder to a canvas.
+    """
+
     c = prepare_canvas(c, (cardwidth, cardheight), pdfargs)
 
     c.setStrokeColorRGB(0.9, 0.9, 0.9)
@@ -85,64 +97,97 @@ def draw_card(c, dat, x = 0.0, y = 0.0, qr=None, pdfargs={}):
     lines = len(pwd)
     fullpwd = "".join(pwd)
 
-    allowed_height = cardheight - cinnermargin * 2 - (0.7 * cm) # 35mm
-    maxsize = allowed_height / lines / 1.4
+    twidth = cardwidth - cinnermargin * 2
+    theight = cardheight - cinnermargin * 2
 
+    if title:
+        title_height = fullpwd_height = 0.5 * cm
+    else:
+        title_height = 0.0
+        fullpwd_height = 0.7 * cm
+
+    if partpwd or hint:
+        allowed_height = theight - (title_height + fullpwd_height)
+    else:
+        allowed_height = (theight - (title_height + fullpwd_height - qrwidth)) / 2
+
+    if qr:
+        qrwidth = min(twidth * 0.4, allowed_height)
+    else:
+        qrwidth = 0.0
+        
+    maxsize = allowed_height / lines / 1.4
     fontsize = min(maxsize, PwdFont[1])
 
     lineheight = fontsize * 1.4
-    starty = y + cinnermargin + lineheight * (len(pwd) - 1)
+    starty = y + cinnermargin + allowed_height * 0.5 + lineheight * (len(pwd) - 2) * 0.5
 
-    twidth = pwidth = cardwidth - cinnermargin * 2
-    hwidth = 0.0
-    if (pwdhints):
-        pwidth = twidth * 5.0 / 8.0
-        hwidth = twidth * 3.0 / 8.0
-    if qr:
-        pwidth *= 0.7
-        hwidth *= 0.7
+    pwidth = twidth - qrwidth
+    if hint:
+        if partpwd: hwidth = pwidth * 3.0 / 8.0
+        else:       hwidth = pwidth
+    else:
+        hwidth = 0.0
+    pwidth -= hwidth
 
+    if title:
+        draw_text_fitted(c,
+                         x + cinnermargin,
+                         y + cinnermargin + allowed_height + fullpwd_height + title_height * 0.2,
+                         width = twidth,
+                         height = title_height,
+                         font = HintFontJ[0],
+                         maxsize = PwdFont[1],
+                         text = title,
+                         maxshrink = 0.9,
+                         efont = HintFontE[0],
+                         centered = True)
+        
     draw_text_fitted(c,
                      x + cinnermargin,
-                     y + cinnermargin + allowed_height + 0.3 * cm,
+                     y + cinnermargin + allowed_height + fullpwd_height * 0.2,
                      width = twidth,
-                     height = 0.6 * cm,
+                     height = fullpwd_height,
                      font = PwdFont[0],
                      maxsize = PwdFont[1],
                      text = fullpwd,
                      maxshrink = 0.8,
                      centered = True)
 
-    for l in range(len(pwd)):
-        draw_text_fitted(c,
-                         x + cinnermargin,
-                         starty - lineheight * l,
-                         pwidth, lineheight / 1.4,
-                         PwdFont[0], PwdFont[1],
-                         pwd[l],
-                         maxshrink = 0.85)
+    if DEBUGBOX: c.rect(x + cinnermargin, y + cinnermargin, pwidth, allowed_height, fill=0)
+    if DEBUGBOX: c.rect(x + cinnermargin, starty, -3 * mm, 0 * mm, fill=0)
+
+    if partpwd:
+        for l in range(len(pwd)):
+            draw_text_fitted(c,
+                             x + cinnermargin,
+                             starty - lineheight * l,
+                             pwidth - mm, lineheight,
+                             PwdFont[0], PwdFont[1],
+                             pwd[l],
+                             maxshrink = 0.85)
 
     hfontsize = min(maxsize, HintFontJ[1])
 
-    if pwdhints:
+    if hint:
         for l in range(len(pwdhints)):
-            if re.match(r'\A[ -\u00FF]*\Z', pwdhints[l]):
-                f = HintFontE
-            else:
-                f = HintFontJ
             draw_text_fitted(c,
                              x + cinnermargin + pwidth,
                              starty - lineheight * l,
-                             hwidth, lineheight / 1.4,
-                             f[0], f[1],
+                             hwidth - mm, lineheight - (PwdFont[1] - HintFontJ[1]),
+                             HintFontJ[0], HintFontJ[1],
                              pwdhints[l],
+                             efont = HintFontE[0],
                              maxshrink = 0.85)
 
     if qr:
-        qwidth = (cardwidth - (cinnermargin * 2 + pwidth + hwidth)) * 0.95
+        qwidth = qrwidth - 1 * mm
         c.drawImage(qr,
-                    x + cardwidth - cinnermargin - qwidth, y + cinnermargin,
-                    width = qwidth, height = qwidth)
+                    x + cardwidth - cinnermargin - qrwidth, y + cinnermargin,
+                    width = qrwidth, height = qrwidth)
+        if DEBUGBOX:
+            c.rect(x + cardwidth - cinnermargin - qrwidth, y + cinnermargin,
+                   width = qrwidth, height = qrwidth)
     return c
 
 def generate_textfile(fname, dat, encrypt_to):
@@ -184,6 +229,8 @@ def main():
     ) # ReportLab bug: encryption with CID font generates buggy PDF.
 
     parser.add_argument('-L', '--layout', help='card layout (1 or 10)', choices=('1', '10'), default='1')
+    parser.add_argument('--title', help='put title line')
+    parser.add_argument('--no-partial-passwords', action='store_false', dest='partpwd', help=argparse.SUPPRESS)
     parser.add_argument('--json', action='store_true',help='reuse previous passphrase data in JSON format')
     parser.add_argument('format', help='password format (or JSON filename with --json)')
     parser.add_argument('count', help='number of generated passwords', nargs='?', type=int, default=1)
@@ -244,13 +291,15 @@ def main():
         output_base = None
         output = opts.output
 
+    dat = (w, h)
     if opts.hint:
         print("\nGenerated password: {}\n                   ({})".format(password, "".join(h)))
-        dat = (w, h)
     else:
         print("\nGenerated password: {}".format(password))
-        dat = (w, None)
 
+    if opts.wifi_ssid and opts.title == None:
+        opts.title = opts.wifi_ssid
+        
     if opts.qrcode:
         import qrcode
         if opts.wifi_ssid:
@@ -273,7 +322,7 @@ def main():
         draw = draw_sheet10
     else:
         draw = draw_card
-    c = draw(output, dat, qr=qr, pdfargs={'encrypt': enc})
+    c = draw(output, dat, hint=opts.hint, partpwd=opts.partpwd, qr=qr, title=opts.title, pdfargs={'encrypt': enc})
     c.showPage()
     c.save()
 
