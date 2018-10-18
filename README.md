@@ -167,7 +167,7 @@ _Note: obviously, all of example outputs above are *intentionally* non-random at
 
     usage: make-password-sheet [-H] [-Q] [--wifi-ssid WIFI_SSID]
                                (-o OUTPUT | -O OUTPUT_BASE)
-                               [--gpg-encrypt-to email] [-L {1,10}]
+                               [--gpg-encrypt-to email] [-L LAYOUT]
                                (format [count] | --json FILENAME)
 
     examples:
@@ -189,6 +189,8 @@ _Note: obviously, all of example outputs above are *intentionally* non-random at
    
  * -L 1 (default): print a passphrase to a 91mm x 55mm card.
  * -L 10: print a 10 copies of cards to an A4 sheet.
+ * -L A4: print a single passphrase to an A4 sheet.  
+   Other available layouts are shown with --help option.
 
  * -o OUTPUT.pdf: write a generated PDF file to 'OUTPUT.pdf'.
  * -O BASE: save output data to filenames based on BASE.
@@ -270,7 +272,7 @@ some details.
 
  * `[jwikipedia10k]` set requires `kakasi` kanji-kana conversion tool.
 
- * `j` and `J` sets requires the naist-jdic-utf8 package contained in
+ * `j` and `J` sets require the naist-jdic-utf8 package contained in
    Debian archive or elsewhere.
 
 ## Acknowledgements
@@ -369,7 +371,7 @@ Data exported by the `--json` option of make-password is like following:
 
 The data is an object containing the following keys:
   * "diag": a string containing any diagnostic messages.
-  * "elements": an array of a single passphrase, whose format is described above.
+  * "elements": an array of data for passphrases, in the format described above.
   * "entropy": a total entropy contained in each passphrase, in bits.
-  * "passwords": a array of (password-hint) pair of strings.
+  * "passwords": a array of (passphrase, hint) pair of strings.
   * Other keys may appear in the future.
