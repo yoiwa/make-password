@@ -11,6 +11,14 @@ import re
 import json
 import subprocess
 
+if __name__ == '__main__':
+    import password_generator
+else:
+    from . import password_generator
+
+VERSION = password_generator.VERSION + ""
+FULL_VERSION = os.path.basename(sys.argv[0]) + " " + VERSION
+
 from reportlab.pdfgen import canvas
 from reportlab.lib import pdfencrypt
 from reportlab.lib.pagesizes import A4, letter, portrait
@@ -445,11 +453,6 @@ def wifi_quote(s):
     return re.sub(r'([\\",;:])', r'\\\1', s)
 
 def main():
-    if __name__ == '__main__':
-        import password_generator
-    else:
-        from . import password_generator
-
     import argparse
 
     layout_helpstr = ("\nlayouts:\n" +
@@ -461,9 +464,9 @@ def main():
                                      epilog=password_generator.format_helpstr +layout_helpstr,
                                      add_help=False,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('-H', '--hint', action='store_true', help='show pronunciation hint')
-    parser.add_argument('-Q', '--qrcode', action='store_true', help='generate QR-code as well')
-    parser.add_argument('--wifi-ssid', help='generate WiFi WPA QRcode')
+    parser.add_argument('-H', '--hint', action='store_true', help='show pronunciation hints')
+    parser.add_argument('-Q', '--qrcode', action='store_true', help='show QR code')
+    parser.add_argument('--wifi-ssid', help='generate QR code for WiFi WPA configuration')
 
     outgroup = parser.add_mutually_exclusive_group(required=True)
     outgroup.add_argument('-o', '--output', help='output file name')
@@ -481,6 +484,7 @@ def main():
     parser.add_argument('format', help='password format (or JSON filename with --json)')
     parser.add_argument('count', help='number of generated passwords', nargs='?', type=int, default=1)
     parser.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
+    parser.add_argument('--version', action='version', version='%(prog)s ' + VERSION)
     parser.add_argument('--help', action='help', help='show this help message')
 
     opts = password_generator.parse_commandline(parser)
@@ -547,9 +551,11 @@ def main():
     else:
         print("\nGenerated password: {}".format(password))
 
-    if opts.wifi_ssid and opts.title == None:
-        opts.title = opts.wifi_ssid
-        
+    if opts.wifi_ssid:
+        opts.qrcode = True
+        if opts.title == None:
+            opts.title = opts.wifi_ssid
+
     if opts.qrcode:
         import qrcode
         if opts.wifi_ssid:
@@ -573,6 +579,10 @@ def main():
 
     c = layout.draw(output, dat, hint=opts.hint, pwdelems=opts.pwdelems,
                     qr=qr, title=opts.title, pdfargs={'encrypt': enc})
+    c.setCreator(FULL_VERSION)
+    c.setAuthor('')
+    c.setSubject('')
+    c.setTitle(opts.title or '')
     c.showPage()
     c.save()
 
