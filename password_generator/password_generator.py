@@ -14,6 +14,9 @@ from math import log2, ceil
 
 VERSION = '1.0alpha2'
 
+if sys.hexversion < 0x03050000:
+    raise RuntimeError('too old Python found')
+
 R = SystemRandom()
 # SystemRandom _is_ secure from Python 3.3, despite warnings in Python documents.
 # Indeed, the "secrets" module introduced in Python 3.6 is implemented upon SystemRandom.
