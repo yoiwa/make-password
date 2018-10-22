@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import sys
 import subprocess
 import io
@@ -169,9 +170,11 @@ def extract_copyright(fname, section, quote = "# "):
 
 class CorpusConvert:
     @staticmethod
-    def kakasi(src, fname, dest, boilerplate):
+    def kakasi(src, fname, boilerplate):
         buf = []
         pbuf = []
+        out = []
+
         for line in src:
             line = line.strip()
             if line == '': continue
@@ -189,7 +192,7 @@ class CorpusConvert:
                         buf.append(w)
                     else:
                         pass
-                        #print("## {}".format(w))
+                        #out.append("## {}".format(w))
 
         with ExitStack() as stack:
             p = stack.enter_context(
@@ -208,31 +211,26 @@ class CorpusConvert:
             src = io.TextIOWrapper(p.stdout, encoding='utf-8', errors='substitute')
             os = {}
 
-            out = []
-            rest = []
-
             for line in src:
                 line = line.strip()
                 mo = re.match(r'^(\d+) ([a-z\']+)$', line)
                 if not mo:
-                    rest.append("### " + line)
+                    out.append("### " + line)
                     continue
                 n, ro = mo.group(1, 2)
                 n = int(n)
                 # ro = re.sub(r'n([m])', r'm\1', ro)  # [bpm]
                 ro = re.sub(r'\'', r'', ro)
                 if ro in os:
-                    rest.append("## {}\t{}\t{}".format(ro, buf[n], os[ro]))
+                    out.append("## {}\t{}\t{}".format(ro, buf[n], os[ro]))
                 else:
                     os[ro] = buf[n]
                     out.append((ro, buf[n]))
 
-            return (boilerplate,
-                    out,
-                    "\n".join(rest))
+            return (boilerplate, out)
 
     @staticmethod
-    def chasen(src, fname, dest, boilerplate):
+    def chasen(src, fname, boilerplate):
         config = {}
         for l in src:
             k, s, v = l.strip().partition(' ')
@@ -245,6 +243,8 @@ class CorpusConvert:
         includes = config.get('includes', "").split()
         excludes = config.get('excludes', "").split()
         hiragana_penalty = int(config.get('hiragana-penalty', 0))
+
+        out = []
 
         with open(dic_fname, encoding='utf-8') as dic:
             words = []
@@ -292,12 +292,10 @@ class CorpusConvert:
                     r = Romanization.romanization(p)
                     words.append([cost, k, r])
                 except ValueError as e:
-                    print("### " + s.strip(), file=dest)
-                    print("#### " + str(lno) + ": " + repr(e), file=dest)
+                    out.append("### " + s.strip())
+                    out.append("#### " + str(lno) + ": " + repr(e))
 
             wdic = {}
-            out = []
-            rest = []
 
             for cost, k, r in sorted(words):
                 if re.search('[a-zA-Zａ-ｚＡ-Ｚァ-ヾ]', k) or '*' in r or '-' in r or 'x' in r or r == '':
@@ -307,14 +305,12 @@ class CorpusConvert:
                     wdic[r] = k
                     out.append((r, k))
                 else:
-                    rest.append("# {}\t{}\t<- {}".format(r, k, wdic.get(r)))
+                    out.append("# {}\t{}\t<- {}".format(r, k, wdic.get(r)))
 
-            return (boilerplate + copyright,
-                    out,
-                    "\n".join(rest))
+            return (boilerplate + copyright, out)
 
     @classmethod
-    def convert(self, fname, ofname):
+    def convert(self, fname, ofname, debug=False):
         hdr = ""
         processor = None
         with open(fname, encoding='utf-8') as src:
@@ -334,20 +330,44 @@ class CorpusConvert:
                     else:
                         raise RuntimeError("Unkown header:", p)
             fun = getattr(self, processor)
-            with open(ofname, 'w', encoding='utf-8') as dest:
-                b = boilerplate + hdr
-                r = fun(src, fname, dest, boilerplate = b)
-                if r:
-                    b, dic, rest = r
-                    save_compact_corpus(dest.buffer, dic, boilerplate=b, rest=rest)
+            b = boilerplate + hdr
+            r = fun(src, fname, boilerplate = b)
+
+            with open(ofname, 'wb') as dest:
+                b, dic = r
+                save_compact_corpus(dest, dic, boilerplate=b)
+
+            if debug:
+                with open(ofname + '.txt', 'w', encoding='utf-8') as dest:
+                    save_hinted_corpus(dest, dic, boilerplate=b)
 
 from password_generator import load_compact_corpus
 from struct import pack
 
-def save_compact_corpus(ob, coll, boilerplate = None, rest=""):
+def save_hinted_corpus(of, coll, boilerplate = ""):
+    print("#format hinted\n" + boilerplate, sep="", file=of)
+    for i in coll:
+        if type(i) is tuple:
+            print("{}\t{}".format(*i), file=of)
+        else:
+            if not i.startswith('#'):
+                i = '#' + i
+            print(i, file=of)
+
+def save_compact_corpus(ob, coll, boilerplate = None, rest=None):
     MAGIC = load_compact_corpus.MAGIC
 
-    l = len(coll)
+    coll2 = []
+    for i in coll:
+        if type(i) is tuple:
+            k, h = i
+            k = k.encode('ascii') + b'\n'
+            h = h.encode('utf-8') + b'\n'
+            coll2.append((k, h))
+    coll = coll2
+
+    ll = len(coll)
+
     ob.write(load_compact_corpus.HEADER)
 
     if boilerplate:
@@ -355,7 +375,7 @@ def save_compact_corpus(ob, coll, boilerplate = None, rest=""):
     else:
         boilerplate = b''
 
-    s = b'#!!PCK!! %08x %08x %08x !!!\n' % (MAGIC, len(boilerplate), len(coll))
+    s = b'#!!PCK!! %08x %08x %08x !!!\n' % (MAGIC, len(boilerplate), ll)
     assert(len(s) == 40)
     ob.write(s)
     ob.write(boilerplate)
@@ -366,23 +386,26 @@ def save_compact_corpus(ob, coll, boilerplate = None, rest=""):
 
     p = 0
 
-    for i in range(len(coll)):
+    # detect common postfix strings to share
+    words = {}
+    for k, v in coll:
+        words[k] = None
+        words[v] = None
+    l = sorted(words.keys(), key=(lambda v: [*reversed(v), 256]))
+
+    p = 0
+    for i in l:
+        if words[i] != None:
+            continue
+        ob.write(i)
+        for ss in range(len(i)):
+            if i[ss:] in words:
+                words[i[ss:]] = p + ss
+        p += len(i)
+
+    for i in range(ll):
         k, h = coll[i]
-        k = k.encode('ascii') + b'\n'
-        h = h.encode('utf-8') + b'\n'
-
-        ob.write(k)
-        pk = p
-        p += len(k)
-
-        if k == h:
-            ph = pk
-        else:
-            ob.write(h)
-            ph = p
-            p += len(h)
-
-        ptr.extend(b'%07x %07x\n' % (pk, ph))
+        ptr.extend(b'%07x %07x\n' % (words[k], words[h]))
 
     if rest:
         ob.write(rest.encode('utf-8', errors='substitute') + b'\n')
@@ -390,4 +413,13 @@ def save_compact_corpus(ob, coll, boilerplate = None, rest=""):
     ob.write(ptr)
 
 if __name__ == '__main__':
-    CorpusConvert.convert(*sys.argv[1:])
+    import argparse
+
+    parser = argparse.ArgumentParser(description='compile corpus')
+    parser.add_argument('--debug', '--diag', action='store_true')
+    parser.add_argument('input')
+    parser.add_argument('output')
+
+    opts = parser.parse_args()
+
+    CorpusConvert.convert(opts.input, opts.output, debug=opts.debug)
