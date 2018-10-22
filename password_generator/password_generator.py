@@ -7,6 +7,7 @@
 import sys
 import re
 import io
+import os
 from collections.abc import Sequence as abcSequence
 from random import SystemRandom
 from math import log2, ceil
@@ -760,8 +761,10 @@ class load_compact_corpus(abcSequence):
     VERSION = 1
     HEADER = b'#format packed\n'
     HEADER2 = b'#_-_-_-\n'
+    MAXSIZE = 104857600
 
     def __init__(self, f, load_header=True):
+
         if isinstance(f, str):
             f = open(f, 'rb')
             load_header = True
@@ -769,6 +772,11 @@ class load_compact_corpus(abcSequence):
             f = f.buffer
             f.seek(0)
             load_header = True
+
+        size = os.fstat(f.fileno()).st_size
+        if size > self.MAXSIZE:
+            raise RuntimeError('too large corpus: safety valve triggered')
+
         if load_header:
             h = f.read(len(self.HEADER))
             if h != self.HEADER:
@@ -807,11 +815,10 @@ class load_compact_corpus(abcSequence):
         if s != self.HEADER2:
             raise RuntimeError('bad corpus: bad magic line {}', s)
 
-        b = f.read(-1)
+        b = f.read(size - f.tell())
         blen = len(b)
-        tblofs = blen - tbllen
-        self.dat = b[0:tblofs]
-        self.idx = b[tblofs:]
+        self.dat = b
+        self.tblofs = blen - tbllen
         if self._getidx(0) != self.MAGIC:
             raise RuntimeError('bad corpus: bad index magic {:08x}'.format(self._getidx(0)))
 
@@ -822,7 +829,8 @@ class load_compact_corpus(abcSequence):
         return (self._get(i * 2 + 1), self._get(i * 2 + 2))
 
     def _getidx(self, i):
-        return int(self.idx[i * 8 : i * 8 + 8], 16)
+        o = self.tblofs + i * 8
+        return int(self.dat[o : o + 8], 16)
         # int accepts \n
 
     def _get(self, i):
