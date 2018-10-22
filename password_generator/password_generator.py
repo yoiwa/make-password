@@ -6,10 +6,11 @@
 
 import sys
 import re
+import io
 from random import SystemRandom
 from math import log2, ceil
 
-VERSION = '1.0alpha1'
+VERSION = '1.0alpha2'
 
 R = SystemRandom()
 # SystemRandom _is_ secure from Python 3.3, despite warnings in Python documents.
@@ -696,44 +697,52 @@ class Wordlist:
         fname = str(self.base_path / (target + ".corpus"))
 
         no_apostroph = False
-        hinted = False
+        fmt = False
         in_header = True
         try:
-            with open(fname, 'r', encoding='utf-8') as f:
-                wlist = set()
-                for l in f:
-                    l = l.strip()
-                    if l == '':
-                        in_header = False
-                        continue
-                    if l[0] == '#':
-                        if in_header:
-                            if l == "#format hinted":
-                                hinted = True
-                            if l == "#option no-apostroph":
-                                no_apostroph = True
-                        continue
+            with open(fname, 'rb') as f:
+                b = f.peek(128)
+                if b.startswith(b'#'):
+                    if b.startswith(b'#format hinted\n'):
+                        fmt = 'hinted'
+                    elif b.startswith(b'#format packed\n'):
+                        fmt = 'packed'
 
-                    in_header = False
-                    if hinted:
-                        w = l.split('\t')
-                        if len(w) != 2:
-                            raise BadFormatError("invalid line in corpus: " + l)
-                        wlist.add(tuple(w))
-                    else:
-                        for word in l.split():
-                            if (word == '' or
-                                word[0] == "'" or
-                                word[-1] == "'" or word[-2:-1] == "'s"):
-                                continue
-                            for char in word:
-                                if char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'":
-                                    break
-                                if no_apostroph and char == "'":
-                                    break
-                            else:
-                                wlist.add(word)
-            wlist = list(sorted(wlist))
+                if fmt == 'packed':
+                    wlist = load_compact_corpus(f)
+                else:
+                    wlist = set()
+                    for l in f:
+                        l = l.strip()
+                        if l == b'':
+                            in_header = False
+                            continue
+                        if l.startswith(b'#'):
+                            if in_header:
+                                if l == b"#option no-apostroph":
+                                    no_apostroph = True
+                            continue
+
+                        in_header = False
+                        if fmt:
+                            w = l.split(b'\t')
+                            if len(w) != 2:
+                                raise BadFormatError("invalid line in corpus: " + l)
+                            wlist.add((w[0].decode('utf-8'), w[1].decode('utf-8')))
+                        else:
+                            for word in l.split():
+                                if (word == b'' or
+                                    word.endswith(b"'") or
+                                    word.endswith(b"'s")):
+                                    continue
+                                for char in word:
+                                    if char not in b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'":
+                                        break
+                                    if no_apostroph and char == b"'"[0]:
+                                        break
+                                else:
+                                    wlist.add(str(word, 'ascii'))
+                    wlist = list(wlist)
             if diag != None:
                 diag.append("loaded {} words of corpus as {}".format(len(wlist), target))
             if (len(wlist) == 0):
@@ -742,6 +751,68 @@ class Wordlist:
             return wlist
         except OSError as e:
             raise BadFormatError("unknown wordlist {}:\n   Cannot load file {}: {}".format(target, fname, e))
+
+class load_compact_corpus:
+    MAGIC=0x3b9c786 # 7digits
+    HEADER = b'#format packed\n'
+    HEADER2 = b'#_-_-_-\n'
+
+    def __init__(self, f, load_header=True):
+        if isinstance(f, str):
+            f = open(f, 'rb')
+            load_header = True
+        elif isinstance(f, io.TextIOBase):
+            f = f.buffer
+            f.seek(0)
+            load_header = True
+        if load_header:
+            h = f.read(len(self.HEADER))
+            if h != self.HEADER:
+                raise RuntimeError('bad corpus: header not found')
+        else:
+            while(f.peek(1)[0] == ord(b'\n')):
+                s = f.read(1)
+
+        s = f.read(40)
+        a = s.split(b' ')
+        if len(a) != 5 or a[0] != b'#!!PCK!!' or a[4] != b'!!!\n':
+            raise RuntimeError('bad corpus: bad magic line {}'.format(s))
+
+        m, blen, l = int(a[1], 16), int(a[2], 16), int(a[3], 16)
+        self.len = l
+        if m != self.MAGIC:
+            raise RuntimeError('bad corpus: bad magic {:08x}'.format(m))
+        tbllen = (l * 2 + 1) * 8
+
+        if blen:
+            s = f.read(blen)
+
+        s = f.read(len(self.HEADER2))
+        if s != self.HEADER2:
+            raise RuntimeError('bad corpus: bad magic line {}', s)
+
+        b = f.read(-1)
+        blen = len(b)
+        tblofs = blen - tbllen
+        self.dat = b[0:tblofs]
+        self.idx = b[tblofs:]
+        if self._getidx(0) != self.MAGIC:
+            raise RuntimeError('bad corpus: bad index magic {:08x}'.format(self._getidx(0)))
+
+    def __len__(self):
+        return self.len
+
+    def __getitem__(self, i):
+        return (self._get(i * 2 + 1), self._get(i * 2 + 2))
+
+    def _getidx(self, i):
+        return int(self.idx[i * 8 : i * 8 + 8], 16)
+        # int accepts \n
+
+    def _get(self, i):
+        o = self._getidx(i)
+        o2 = self.dat.index(b'\n', o)
+        return self.dat[o:o2].decode('utf-8')
 
 if __name__ == '__main__':
     main()

@@ -208,24 +208,28 @@ class CorpusConvert:
             src = io.TextIOWrapper(p.stdout, encoding='utf-8', errors='substitute')
             os = {}
 
-            print("#format hinted\n" + boilerplate, sep="", file=dest)
+            out = []
+            rest = []
 
             for line in src:
                 line = line.strip()
                 mo = re.match(r'^(\d+) ([a-z\']+)$', line)
                 if not mo:
-                    print("### ", line, file=dest)
+                    rest.append("### " + line)
                     continue
                 n, ro = mo.group(1, 2)
                 n = int(n)
-#                ro = re.sub(r'n([m])', r'm\1', ro)  # [bpm]
+                # ro = re.sub(r'n([m])', r'm\1', ro)  # [bpm]
                 ro = re.sub(r'\'', r'', ro)
                 if ro in os:
-                    print("## {}\t{}\t{}".format(ro, buf[n], os[ro]), file=dest)
+                    rest.append("## {}\t{}\t{}".format(ro, buf[n], os[ro]))
                 else:
                     os[ro] = buf[n]
-                    print("{}\t{}".format(ro, buf[n]), file=dest)
-#            t.join()
+                    out.append((ro, buf[n]))
+
+            return (boilerplate,
+                    out,
+                    "\n".join(rest))
 
     @staticmethod
     def chasen(src, fname, dest, boilerplate):
@@ -291,18 +295,23 @@ class CorpusConvert:
                     print("### " + s.strip(), file=dest)
                     print("#### " + str(lno) + ": " + repr(e), file=dest)
 
-            print("#format hinted\n" + boilerplate, sep="", file=dest)
-            print(copyright, sep="", file=dest)
             wdic = {}
+            out = []
+            rest = []
+
             for cost, k, r in sorted(words):
                 if re.search('[a-zA-Zａ-ｚＡ-Ｚァ-ヾ]', k) or '*' in r or '-' in r or 'x' in r or r == '':
-                    #print("## {}\t{}".format(r, k), file=dest)
+                    #rest.append("## {}\t{}".format(r, k))
                     continue
                 if r not in wdic:
                     wdic[r] = k
-                    print("{}\t{}".format(r, k), file=dest)
+                    out.append((r, k))
                 else:
-                    print("# {}\t{}\t<- {}".format(r, k, wdic.get(r)), file=dest)
+                    rest.append("# {}\t{}\t<- {}".format(r, k, wdic.get(r)))
+
+            return (boilerplate + copyright,
+                    out,
+                    "\n".join(rest))
 
     @classmethod
     def convert(self, fname, ofname):
@@ -327,7 +336,58 @@ class CorpusConvert:
             fun = getattr(self, processor)
             with open(ofname, 'w', encoding='utf-8') as dest:
                 b = boilerplate + hdr
-                fun(src, fname, dest, boilerplate = b)
+                r = fun(src, fname, dest, boilerplate = b)
+                if r:
+                    b, dic, rest = r
+                    save_compact_corpus(dest.buffer, dic, boilerplate=b, rest=rest)
+
+from password_generator import load_compact_corpus
+from struct import pack
+
+def save_compact_corpus(ob, coll, boilerplate = None, rest=""):
+    MAGIC = load_compact_corpus.MAGIC
+
+    l = len(coll)
+    ob.write(load_compact_corpus.HEADER)
+
+    if boilerplate:
+        boilerplate = boilerplate.encode('utf-8') + b'\n'
+    else:
+        boilerplate = b''
+
+    s = b'#!!PCK!! %08x %08x %08x !!!\n' % (MAGIC, len(boilerplate), len(coll))
+    assert(len(s) == 40)
+    ob.write(s)
+    ob.write(boilerplate)
+    ob.write(load_compact_corpus.HEADER2)
+
+    ptr = bytearray()
+    ptr.extend(b'%07x\n' % (MAGIC,))
+
+    p = 0
+
+    for i in range(len(coll)):
+        k, h = coll[i]
+        k = k.encode('ascii') + b'\n'
+        h = h.encode('utf-8') + b'\n'
+
+        ob.write(k)
+        pk = p
+        p += len(k)
+
+        if k == h:
+            ph = pk
+        else:
+            ob.write(h)
+            ph = p
+            p += len(h)
+
+        ptr.extend(b'%07x %07x\n' % (pk, ph))
+
+    if rest:
+        ob.write(rest.encode('utf-8', errors='substitute') + b'\n')
+
+    ob.write(ptr)
 
 if __name__ == '__main__':
     CorpusConvert.convert(*sys.argv[1:])
