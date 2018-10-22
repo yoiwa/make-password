@@ -7,6 +7,7 @@
 import sys
 import re
 import io
+from collections.abc import Sequence as abcSequence
 from random import SystemRandom
 from math import log2, ceil
 
@@ -707,6 +708,8 @@ class Wordlist:
                         fmt = 'hinted'
                     elif b.startswith(b'#format packed\n'):
                         fmt = 'packed'
+                    elif b.startswith(b'#format '):
+                        raise BadFormatError('Unrecognized wordlist {} in file {}'.format(target, fname))
 
                 if fmt == 'packed':
                     wlist = load_compact_corpus(f)
@@ -752,8 +755,9 @@ class Wordlist:
         except OSError as e:
             raise BadFormatError("unknown wordlist {}:\n   Cannot load file {}: {}".format(target, fname, e))
 
-class load_compact_corpus:
-    MAGIC=0x3b9c786 # 7digits
+class load_compact_corpus(abcSequence):
+    MAGIC = 0x3b9c787 # 7digits
+    VERSION = 1
     HEADER = b'#format packed\n'
     HEADER2 = b'#_-_-_-\n'
 
@@ -773,15 +777,27 @@ class load_compact_corpus:
             while(f.peek(1)[0] == ord(b'\n')):
                 s = f.read(1)
 
-        s = f.read(40)
-        a = s.split(b' ')
-        if len(a) != 5 or a[0] != b'#!!PCK!!' or a[4] != b'!!!\n':
+        try:
+            s = f.read(48)
+            a = s.split(b' ')
+            if len(a) < 3 or a[0] != b'#!!PCK!!':
+                raise RuntimeError('bad corpus: bad magic line {}'.format(s))
+
+            if int(a[1], 16) != self.MAGIC:
+                raise RuntimeError('bad corpus: bad magic {:08x}'.format(int(a[1], 16)))
+
+            if int(a[2], 16) != self.VERSION:
+                raise RuntimeError('bad corpus: corpus format version mismatch ({} instead of {})'.format(int(a[2], 16), self.VERSION))
+
+            if len(a) != 6 or a[5] != b'!!\n':
+                raise RuntimeError('bad corpus: bad magic line {}'.format(s))
+
+            blen, l = int(a[3], 16), int(a[4], 16)
+        except ValueError:
             raise RuntimeError('bad corpus: bad magic line {}'.format(s))
 
-        m, blen, l = int(a[1], 16), int(a[2], 16), int(a[3], 16)
         self.len = l
-        if m != self.MAGIC:
-            raise RuntimeError('bad corpus: bad magic {:08x}'.format(m))
+
         tbllen = (l * 2 + 1) * 8
 
         if blen:

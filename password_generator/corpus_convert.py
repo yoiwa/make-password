@@ -7,8 +7,7 @@ import threading
 import json
 from contextlib import ExitStack
 
-boilerplate = """### Generated file. DO NOT EDIT.
-"""
+BOILERPLATE = """### Generated file. DO NOT EDIT."""
 
 class Sexp:
     regex = re.compile(r"""     (?P<space>\s+)|
@@ -170,7 +169,7 @@ def extract_copyright(fname, section, quote = "# "):
 
 class CorpusConvert:
     @staticmethod
-    def kakasi(src, fname, boilerplate):
+    def process_kakasi(src, fname, boilerplate):
         buf = []
         pbuf = []
         out = []
@@ -230,7 +229,7 @@ class CorpusConvert:
             return (boilerplate, out)
 
     @staticmethod
-    def chasen(src, fname, boilerplate):
+    def process_chasen(src, fname, boilerplate):
         config = {}
         for l in src:
             k, s, v = l.strip().partition(' ')
@@ -309,6 +308,52 @@ class CorpusConvert:
 
             return (boilerplate + copyright, out)
 
+    @staticmethod
+    def process_hinted(src, fname, boilerplate):
+        # process boilerplate
+        b = boilerplate.rstrip('\n').split('\n')
+        bt = BOILERPLATE.rstrip('\n').split('\n')
+        bb = []
+        while (len(b) >= len(bt) and b[0:len(bt)] == bt):
+            b = b[len(bt):]
+        b = bt + b
+        for l in b:
+            if not l.startswith('#'):
+                bb.append('# ' + l)
+            else:
+                bb.append(l)
+        boilerplate = "\n".join(bb + [''])
+
+        out = []
+        f = 2
+        g = False
+        for l in src:
+            l = l.strip()
+            if (l == ''):
+                if f >= 1:
+                    f -= 1
+                g = False
+                continue
+            if l.startswith('#'):
+                if f and (g or 'Copyright' in l):
+                    # workaround for old hinted corpus file
+                    g = True
+                    boilerplate += l + "\n"
+                else:
+                    out.append(l)
+                continue
+
+            if (f >= 2):
+                print ('Warning: no separator line after header', file=sys.stderr)
+            f = 0
+            e = l.split('\t')
+            if len(e) != 2:
+                raise ValueError('bad input line: {!r}'.format(l))
+            out.append(tuple(e))
+
+        check_dict_content(out, cause='input')
+        return boilerplate, out
+
     @classmethod
     def convert(self, fname, ofname, debug=False):
         hdr = ""
@@ -325,21 +370,38 @@ class CorpusConvert:
                     (p, s, t) = l.partition(' ')
                     if (p == '#' or p.startswith('##')):
                         hdr += ll
-                    elif (p == '#processor'):
+                    elif (p == '#processor' or p =='#format'):
                         processor = t
                     else:
                         raise RuntimeError("Unkown header:", p)
-            fun = getattr(self, processor)
-            b = boilerplate + hdr
-            r = fun(src, fname, boilerplate = b)
+            fun = getattr(self, 'process_' + processor)
+            b = BOILERPLATE + "\n" + hdr
+            b, dic = fun(src, fname, boilerplate = b)
+            check_dict_content(dic)
 
             with open(ofname, 'wb') as dest:
-                b, dic = r
                 save_compact_corpus(dest, dic, boilerplate=b)
 
             if debug:
                 with open(ofname + '.txt', 'w', encoding='utf-8') as dest:
                     save_hinted_corpus(dest, dic, boilerplate=b)
+
+def check_dict_content(dic, cause='internal'):
+    s = set()
+    for e in dic:
+        if type(e) is str:
+            continue
+        if (not type(e) is tuple) or len(e) != 2:
+            raise ValueError(cause + ' error: bad element in generated dictionary')
+        w = e[0]
+        if not re.match(r"\A[A-Za-z']+\Z", w):
+            raise ValueError(cause + ' error: bad word {!r} in generated dictionary'.format(w))
+        if w in s:
+            raise ValueError(cause + ' error: word {!r} duplicated in generated dictionary'.format(w))
+        s.add(w)
+    if len(s) < 2:
+        raise ValueError(cause + ' error: only {} word in generated dictionary'.format(len(s)))
+        return
 
 from password_generator import load_compact_corpus
 from struct import pack
@@ -356,6 +418,7 @@ def save_hinted_corpus(of, coll, boilerplate = ""):
 
 def save_compact_corpus(ob, coll, boilerplate = None, rest=None):
     MAGIC = load_compact_corpus.MAGIC
+    VERSION = load_compact_corpus.VERSION
 
     coll2 = []
     for i in coll:
@@ -375,8 +438,8 @@ def save_compact_corpus(ob, coll, boilerplate = None, rest=None):
     else:
         boilerplate = b''
 
-    s = b'#!!PCK!! %08x %08x %08x !!!\n' % (MAGIC, len(boilerplate), ll)
-    assert(len(s) == 40)
+    s = b'#!!PCK!! %08x %08x %08x %08x !!\n' % (MAGIC, VERSION, len(boilerplate), ll)
+    assert(len(s) == 48)
     ob.write(s)
     ob.write(boilerplate)
     ob.write(load_compact_corpus.HEADER2)
