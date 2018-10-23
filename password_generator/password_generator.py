@@ -311,13 +311,14 @@ class Charlist:
             '[': '[open bracket]',      ']': '[close bracket]',
             '{': '[open brace]',        '}': '[close brace]',
             '<': '[less than]',         '>': '[gtr. than]',
-            '(': '[open paren]',        ')': '[close paren]',
-            '"': '[dbl. quote "]',      "'": "[single quote ']",        '`': '[back quote `]',
-            "\\": '[back slash \\]',    "/": '[backslash /]',
-            '8': '[eight 8]',           '&': '[ampersand &]',
+            '(': '[open paren.]',       ')': '[close paren.]',
+            '"': '[dbl. quote "]',      "'": "[single quote ']",        '`': '[backquote `]',
+            "\\": '[backslash \\]',     "/": '[slash /]',
+            '&': '[ampersand &]',
             '%': '[percent %]',         '@': '[at mark @]',
             '$': '[dollar $]',          '*': '[asterisk *]',            '#': '[number mark #]',
             '+': '[plus +]',            '=': '[equals =]',              '^': '[circumflex ^]',
+            #'8': '[eight 8]',         'B': '[capital B]',
         }
 
         return [(x, _Annotations.get(x, x)) for x in l]
