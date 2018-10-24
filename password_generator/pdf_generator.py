@@ -3,6 +3,7 @@
 # Written by Yutaka OIWA (AIST).
 # (c) 2018 National Institute of Advanced Industrial Science and Technology.
 # See LICENSE file copyright detials.
+# [AIST program registration #H30PRO-2263]
 
 import math
 import sys

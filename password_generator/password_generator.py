@@ -3,6 +3,7 @@
 # Written by Yutaka OIWA (AIST).
 # (c) 2018 National Institute of Advanced Industrial Science and Technology.
 # See LICENSE file copyright detials.
+# [AIST program registration #H30PRO-2263]
 
 import sys
 import re
@@ -325,7 +326,7 @@ class Charlist:
 
     # raw sets
     Digits = "0123456789"
-    Lower = "abcdefghojklmnopqrstuvwxyz"
+    Lower = "abcdefghijklmnopqrstuvwxyz"
     Upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     Hexadecimal = "0123456789abcdef"
     UpperHexadecimal = "0123456789ABCDEF"

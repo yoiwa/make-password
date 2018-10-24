@@ -5,7 +5,7 @@
 (c) 2018 National Institute of Advanced Industrial Science and Technology.
 
 See LICENSE file for the terms of use.  
-[AIST program registration #H30PRO-(TBD)]
+[AIST program registration #H30PRO-2263]
 
 ## About the program
 
