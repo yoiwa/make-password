@@ -483,7 +483,7 @@ def main():
     parser.add_argument('--no-partial-passwords', action='store_false', dest='pwdelems', help=argparse.SUPPRESS)
     parser.add_argument('--json', action='store_true',help='reuse previous passphrase data in JSON format')
     parser.add_argument('format', help='password format (or JSON filename with --json)')
-    parser.add_argument('count', help='number of generated passwords', nargs='?', type=int, default=1)
+    parser.add_argument('count', help='number of generated passwords', nargs='?', type=int, default=None)
     parser.add_argument('--debug', action='store_true', help=argparse.SUPPRESS)
     parser.add_argument('--version', action='version', version='%(prog)s ' + VERSION)
     parser.add_argument('--help', action='help', help='show this help message')
@@ -500,39 +500,71 @@ def main():
             with open(opts.format, 'r', encoding='utf-8') as rf:
                 json_dat = json.load(rf)
 
+        # format check
+        if isinstance(json_dat, list) and 'password' in json_dat[0]:
+            if opts.count != None:
+                parser.error("given JSON contains single passphrase")
+        elif 'elements' in json_dat:
+            json_dat = json_dat['elements']
+            if not isinstance(json_dat, list):
+                parser.error("bad JSON input")
+            if opts.count == None:
+                parser.error("parameter count must be given to choose a single passphrase")
+            if not 1 <= opts.count <= len(json_dat):
+                parser.error("bad count given (must be in 1 -- {})".format(len(json_dat)))
+            json_dat = json_dat[opts.count - 1]
+        else:
+            parser.error("bad JSON input")
     else:
         while True:
-            l, diag = password_generator.generate(opts.format, opts.count)
-            if opts.count == 1:
+            try:
+                l, diag = password_generator.generate(opts.format, opts.count if opts.count != None else 1)
+            except password_generator.BadFormatError as e:
+                parser.error(e.args[0])
+
+            if opts.count == None:
                 l = 1
                 break
 
             for i in range(len(l)):
-                print("{:2d}:  {}\n    ({})\n".format(i + 1, *l[i]))
+                print("{:2d}:  {}\n    ({})\n".format(i + 1, *l[i]), file=sys.stderr)
 
-            print("Which one? (1-{}, RET for another set)".format(len(l)))
+            print("Which one? (1-{}, RET for another set): ".format(len(l)), end="", file=sys.stderr)
+            sys.stderr.flush()
 
             l = sys.stdin.readline().strip()
 
             if l != "":
                 break
-
-        json_dat = diag['elements'][int(l) - 1]
+        try:
+            json_dat = diag['elements'][int(l) - 1]
+        except ValueError:
+            print("Unrecognized input.  aborting.", file=sys.stderr)
+            exit(2)
 
     w = []
     h = []
 
-    for dic in json_dat:
-        if not dic['separator']:
-            w.append(dic['password'])
-            h.append(dic['hint'])
-        else:
-            if w == []:
-                w.append("")
-            if h == []:
-                h.append("")
-            w[-1] += dic['password']
-            h[-1] += dic['hint']
+    try:
+        for dic in json_dat:
+            if (type(dic.get('separator')) is not bool or
+                type(dic.get('password')) is not str or
+                type(dic.get('hint')) is not str):
+                raise LookupError
+
+            if not dic['separator']:
+                w.append(dic['password'])
+                h.append(dic['hint'])
+            else:
+                if w == []:
+                    w.append("")
+                if h == []:
+                    h.append("")
+                w[-1] += dic['password']
+                h[-1] += dic['hint']
+    except LookupError:
+        if opts.json:
+            parser.error("bad JSON input: error while parsing")
 
     password = "".join(w)
 
