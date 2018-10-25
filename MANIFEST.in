@@ -1,0 +1,3 @@
+include LICENSE
+include password_generator/corpus_source/*.src
+exclude password_generator/*_test*.py

@@ -7,8 +7,6 @@
 
 import sys
 import re
-import io
-import os
 from collections.abc import Sequence as abcSequence
 from random import SystemRandom
 from math import log2, ceil
@@ -698,150 +696,18 @@ class Wordlist:
         if target in self.corpus:
             return self.corpus[target]
 
-        if not self.base_path:
-            from pathlib import Path
-            self.base_path = Path(sys.modules[self.__module__].__file__).parent / 'corpus'
-        fname = str(self.base_path / (target + ".corpus"))
-
-        no_apostroph = False
-        fmt = False
-        in_header = True
         try:
-            with open(fname, 'rb') as f:
-                b = f.peek(128)
-                if b.startswith(b'#'):
-                    if b.startswith(b'#format hinted\n'):
-                        fmt = 'hinted'
-                    elif b.startswith(b'#format packed\n'):
-                        fmt = 'packed'
-                    elif b.startswith(b'#format '):
-                        raise BadFormatError('Unrecognized wordlist {} in file {}'.format(target, fname))
+            if '.' in __name__:
+                from . import corpus_loader
+            else:
+                import corpus_loader
+        except ImportError:
+            raise BadFormatError("external corpus support not installed")
 
-                if fmt == 'packed':
-                    wlist = load_compact_corpus(f)
-                else:
-                    wlist = set()
-                    for l in f:
-                        l = l.strip()
-                        if l == b'':
-                            in_header = False
-                            continue
-                        if l.startswith(b'#'):
-                            if in_header:
-                                if l == b"#option no-apostroph":
-                                    no_apostroph = True
-                            continue
+        wlist = corpus_loader.load_corpus(target, diag=diag, errorclass=BadFormatError)
 
-                        in_header = False
-                        if fmt:
-                            w = l.split(b'\t')
-                            if len(w) != 2:
-                                raise BadFormatError("invalid line in corpus: " + l)
-                            wlist.add((w[0].decode('utf-8'), w[1].decode('utf-8')))
-                        else:
-                            for word in l.split():
-                                if (word == b'' or
-                                    word.endswith(b"'") or
-                                    word.endswith(b"'s")):
-                                    continue
-                                for char in word:
-                                    if char not in b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'":
-                                        break
-                                    if no_apostroph and char == b"'"[0]:
-                                        break
-                                else:
-                                    wlist.add(str(word, 'ascii'))
-                    wlist = list(wlist)
-            if diag != None:
-                diag.append("loaded {} words of corpus as {}".format(len(wlist), target))
-            if (len(wlist) == 0):
-                raise BadFormatError("empty or bad corpus:" + target)
-            self.corpus[target] = wlist
-            return wlist
-        except OSError as e:
-            raise BadFormatError("unknown wordlist {}:\n   Cannot load file {}: {}".format(target, fname, e))
-
-class load_compact_corpus(abcSequence):
-    MAGIC = 0x3b9c787 # 7digits
-    VERSION = 1
-    HEADER = b'#format packed\n'
-    HEADER2 = b'#_-_-_-\n'
-    MAXSIZE = 104857600
-
-    def __init__(self, f, load_header=True):
-
-        if isinstance(f, str):
-            f = open(f, 'rb')
-            load_header = True
-        elif isinstance(f, io.TextIOBase):
-            f = f.buffer
-            f.seek(0)
-            load_header = True
-
-        size = os.fstat(f.fileno()).st_size
-        if size > self.MAXSIZE:
-            raise RuntimeError('too large corpus: safety valve triggered')
-
-        if load_header:
-            h = f.read(len(self.HEADER))
-            if h != self.HEADER:
-                raise RuntimeError('bad corpus: header not found')
-        else:
-            while(f.peek(1)[0] == ord(b'\n')):
-                s = f.read(1)
-
-        try:
-            s = f.read(48)
-            a = s.split(b' ')
-            if len(a) < 3 or a[0] != b'#!!PCK!!':
-                raise RuntimeError('bad corpus: bad magic line {}'.format(s))
-
-            if int(a[1], 16) != self.MAGIC:
-                raise RuntimeError('bad corpus: bad magic {:08x}'.format(int(a[1], 16)))
-
-            if int(a[2], 16) != self.VERSION:
-                raise RuntimeError('bad corpus: corpus format version mismatch ({} instead of {})'.format(int(a[2], 16), self.VERSION))
-
-            if len(a) != 6 or a[5] != b'!!\n':
-                raise RuntimeError('bad corpus: bad magic line {}'.format(s))
-
-            blen, l = int(a[3], 16), int(a[4], 16)
-        except ValueError:
-            raise RuntimeError('bad corpus: bad magic line {}'.format(s))
-
-        self.len = l
-
-        tbllen = (l * 2 + 1) * 8
-
-        if blen:
-            s = f.read(blen)
-
-        s = f.read(len(self.HEADER2))
-        if s != self.HEADER2:
-            raise RuntimeError('bad corpus: bad magic line {}', s)
-
-        b = f.read(size - f.tell())
-        blen = len(b)
-        self.dat = b
-        self.tblofs = blen - tbllen
-        if self._getidx(0) != self.MAGIC:
-            raise RuntimeError('bad corpus: bad index magic {:08x}'.format(self._getidx(0)))
-
-    def __len__(self):
-        return self.len
-
-    def __getitem__(self, i):
-        return (self._get(i * 2 + 1), self._get(i * 2 + 2))
-
-    def _getidx(self, i):
-        o = self.tblofs + i * 8
-        return int(self.dat[o : o + 8], 16)
-        # int accepts \n
-
-    def _get(self, i):
-        o = self._getidx(i)
-        o2 = self.dat.index(b'\n', o)
-        return self.dat[o:o2].decode('utf-8')
+        self.corpus[target] = wlist
+        return wlist
 
 if __name__ == '__main__':
     main()
