@@ -150,6 +150,8 @@ class load_compact_corpus(abcSequence):
         return self.len
 
     def __getitem__(self, i):
+        if (i < 0 or i >= self.len or int(i) != i):
+            raise IndexError
         return (self._get(i * 2 + 1), self._get(i * 2 + 2))
 
     def _getidx(self, i):
