@@ -53,23 +53,6 @@ def load_corpus(target, *, rawname=False, diag=None, errorclass=RuntimeError):
             return wlist
 
 ### CompactCorpus
-class _lazystr:
-    __slots__ = ('_',)
-    def __init__(self, b, start, end):
-        self._ = (b, start, end)
-    def __str__(self):
-        if type(self._) is tuple:
-            _ = self._
-            self._ = _[0][_[1]:_[2]].decode('utf-8')
-            #print("LAZY: ({})->{}".format(_[1:], self._), file=sys.stderr)
-        return self._
-    def __repr__(self):
-        return "lazystr({!r})".format(str(self))
-
-class LazyWordTuple(password_generator.WordTuple):
-    @property
-    def hint(self):
-        return str(self[1])
 
 def load_compact_corpus(*args, **kwargs):
     return CompactedCorpus(*args, **kwargs)
@@ -147,10 +130,15 @@ class CompactedCorpus(password_generator.WordsCorpusBase):
     def __len__(self):
         return self.len
 
-    def __getitem__(self, i):
+    def get_word(self, i):
         if (i < 0 or i >= self.len or int(i) != i):
             raise IndexError(i)
-        return LazyWordTuple(self._get(i * 2 + 1), self._getlazy(i * 2 + 2))
+        return self._get(i * 2 + 1)
+
+    def get_with_hint(self, i):
+        if (i < 0 or i >= self.len or int(i) != i):
+            raise IndexError(i)
+        return password_generator.WordTuple(self._get(i * 2 + 1), self._get(i * 2 + 2))
 
     def _getidx(self, i):
         o = self.tblofs + i * 8
@@ -162,11 +150,6 @@ class CompactedCorpus(password_generator.WordsCorpusBase):
         o2 = self.dat.index(b'\n', o)
         #print("NONLAZY: ({})->{}".format((o,o2), self.dat[o:o2].decode('utf-8')), file=sys.stderr)
         return self.dat[o:o2].decode('utf-8')
-
-    def _getlazy(self, i):
-        o = self._getidx(i)
-        o2 = self.dat.index(b'\n', o)
-        return _lazystr(self.dat, o, o2)
 
 ### Text Corpus
 

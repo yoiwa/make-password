@@ -7,8 +7,9 @@
 
 import sys
 import re
-import bisect
-import collections, collections.abc
+from abc import abstractmethod
+from collections import namedtuple
+import collections.abc
 from collections.abc import Sequence as abcSequence
 from random import SystemRandom
 from math import log2, ceil
@@ -28,14 +29,15 @@ class BadFormatError(RuntimeError):
 def generate(fspec, count):
     """Generate <count> number of random passwords/passphrases.
 
-    The passes are formated according to <fspec>.
+    The passphrases are formated according to <fspec>.
 
-    Returned value is (list, diagnostic_data),
-    where list is a <count>-element sequence of
-    pair of (password, reading hint for password).
-    diagnostic_data is a dict at least containing
-      key 'diag': (str) message for diagnostics,
-      key 'entropy': (float) estimated entropy of generated passwords.
+    Returned value is (list, json_data),
+      where list is a <count>-element sequence of
+        pair of (password, reading hint for password).
+      json_data is a dict at least containing the following keys:
+        key 'diag': (str) message for diagnostics,
+        key 'entropy': (float) estimated entropy of generated passphrases,
+        key 'elements': list of sequences of elements of generated passphrases.
 
     Raises BadFormatError if fspec is either bad or not able to be satisfied.
     """
@@ -47,6 +49,7 @@ def generate(fspec, count):
 
     elements = []
     result = []
+
     for ncount in range(count):
         e = 0.0
         o = []
@@ -54,15 +57,14 @@ def generate(fspec, count):
         def elem(e, f, o, h):
             return {'entropy': e, 'separator': f, 'password': o, 'hint': h }
 
-        def proc(filling, i, sep, wl, iswords, ct):
+        def proc(filling, i, sep, wl, ct):
             nonlocal e
             nonlocal o
             nonlocal o_hint
 
             initial = not filling and i == 0
 
-            l1 = len(wl)
-            e1 = log2(l1)
+            e1 = wl.entropy()
 
             if ct == 0:
                 if entropy == None or i != len(fspec) - 1:
@@ -79,11 +81,11 @@ def generate(fspec, count):
                     diag.append("Entropy computation: {0:.3f} * {2:d} = {3:.3f} bits".format(e1, e, ct, ct * e1))
                 e += ct * e1
 
-            if iswords:
+            if wl.is_words:
                 intersep = sep if sep != None else " "
                 presep = "" if initial else sep if sep != None else " "
                 for c in range(0, ct):
-                    w = wl[R.randrange(l1)]
+                    w = wl.get_randomly()
                     s = presep if c == 0 else intersep
                     sh = " " if (s == "" and c != 0) else s
                     if sh: o.append(elem(0.0, True, s, sh))
@@ -96,19 +98,15 @@ def generate(fspec, count):
                     ow = []
                     oh = []
                     for c in range(0, ct):
-                        w = wl[R.randrange(l1)]
-                        if type(w) is tuple:
-                            w, h = w
-                        else:
-                            w, h = w, w
-                        ow.append(w)
-                        oh.append(str(h))
+                        w = wl.get_randomly()
+                        ow.append(w.word)
+                        oh.append(w.hint)
                     o.append(elem(ct * e1, False, "".join(ow), "".join(oh)))
 
-        for i in fspec:
-            proc(False, *i)
+        for i, s in enumerate(fspec):
+            proc(False, i, *s)
         while(entropy != None and e < entropy):
-            proc(True, *(fspec[-1]))
+            proc(True, len(fspec)-1, *(fspec[-1]))
 
         if ncount == 0:
             diag.append("Entropy computation: total generated entropy {:.3f} bits".format(e))
@@ -120,20 +118,6 @@ def generate(fspec, count):
         result.append((o_word, o_hint))
 
     return result, {'passwords': result, 'elements': elements, 'diag': "\n".join(diag), 'entropy': e}
-
-def _expand_subs(s):
-    o = set()
-    while s != '':
-        mo = re.match(r'\A(.)(?:-(.))?(.*)\Z', s)
-        assert (mo != None), s
-        if mo.group(2) == None:
-            o.add(ord(mo.group(1)))
-        else:
-            for e in range(ord(mo.group(1)), ord(mo.group(2)) + 1):
-                o.add(e)
-        s = mo.group(3)
-    r = "".join(chr(x) for x in o)
-    return r
 
 def _remove_backslash(s):
     if s == None: return None
@@ -164,19 +148,10 @@ def _parse_fspec(s, *, diag=None):
         sep = sep1 or _remove_backslash(sep2)
         pat = pat1 or pat2
 
-        if pat in Charlist.mapping:
-            wl = Charlist.mapping[pat]
-            iswords = False
-        else:
-            wl = Wordlist.load_wordlist(pat, diag=diag)
-            iswords = True
+        wl = CorpusList.get_corpus(pat, diag=diag)
 
         if subs:
-            if iswords:
-                wl = wl.subset(subs)
-            else:
-                subse = _expand_subs(subs)
-                wl = [w for w in wl if (w[0][0] if type(w) is tuple else w[0]) in subse]
+            wl = wl.subset(subs)
             if len(wl) == 0:
                 raise BadFormatError("no words starting with [{}] in wordset {}".format(subs, pat))
             elif len(wl) == 1:
@@ -185,14 +160,15 @@ def _parse_fspec(s, *, diag=None):
         if len(wl) <= 1:
             raise BadFormatError("not enough candidate in wordset {}".format(subs, pat))
 
-        o.append((i, sep, wl, iswords, (int(dig) if dig != '' else 0)))
+        dig = int(dig) if dig != '' else 0
+        o.append((sep, wl, dig))
         i += 1
 
     mo = re.match(r"\A(?: *:(\d+))?\Z", s)
     if not mo:
         raise BadFormatError("parse failed at " + s)
 
-    if i == 0:
+    if len(o) == 0:
         raise BadFormatError("No format specifier found in " + s)
 
     entropy = mo.group(1)
@@ -200,6 +176,10 @@ def _parse_fspec(s, *, diag=None):
     return (o, entropy)
 
 def parse_commandline(parser):
+    """Parse command-line arguments.
+
+    Special handling is taken for hyphens followed by single-character corpuses.
+    """
     # preprocess arguments:
     args = sys.argv[1:]
     for i in range(len(args)):
@@ -209,8 +189,7 @@ def parse_commandline(parser):
         if (len(s) >= 2 and s[0] == '-'):
             c = s[1]
             if (c == '[' or
-                c in Charlist.mapping or
-                c in Wordlist.mapping):
+                c in CorpusList.shortname_mapping):
                 args[i:i] = ('--',)
                 break
 
@@ -244,6 +223,7 @@ password format specifier:
 """
 
 def main():
+    """Generate passphrases from command line."""
     import argparse
 
     parser = argparse.ArgumentParser(description='Generate passphrase candidates',
@@ -281,7 +261,11 @@ def main():
 
     exit(0)
 
-def set_stdout_encoding(forced):
+def set_stdout_encoding(forced=False):
+    """Set of error-handling mode of sys.stdout to more torelable setting.
+
+    If either forced or its encoding was ASCII, encoding will be changed to UTF-8."""
+
     import codecs
     encoding = sys.stdout.encoding
     ename = codecs.lookup(encoding).name
@@ -298,6 +282,246 @@ def set_stdout_encoding(forced):
         sys.stdout.reconfigure(encoding=new_ename, errors='namereplace')
     else:
         sys.stdout = type(sys.stdout)(sys.stdout.buffer, encoding=new_ename, errors='namereplace')
+
+WordTuple = namedtuple('WordTuple', ('word', 'hint'))
+
+### Classes for corpuses
+
+def _expand_subs(s):
+    o = set()
+    while s != '':
+        mo = re.match(r'\A(.)(?:-(.))?(.*)\Z', s)
+        assert (mo != None), s
+        if mo.group(2) == None:
+            o.add(ord(mo.group(1)))
+        else:
+            for e in range(ord(mo.group(1)), ord(mo.group(2)) + 1):
+                o.add(e)
+        s = mo.group(3)
+    r = "".join(chr(x) for x in o)
+    return r
+
+class CorpusBase(abcSequence):
+    """Corpus instance for random passphrase generation."""
+
+    def entropy(self):
+        """Return the entropy contained in this corpus."""
+        l = len(self)
+        if l < 1:
+            raise ValueError("Empty corpus: undefined entropy")
+        return log2(l)
+
+    def get_randomly(self):
+        """Get a random word with hint from this corpus.
+
+        Returns a WordTuple."""
+        l = len(self)
+        if l < 1:
+            raise ValueError("Empty corpus: cannot generate passphrase")
+        return self.get_with_hint(R.randrange(l))
+
+    @abstractmethod
+    def get_with_hint(self, i):
+        """Get a specific entry as a word-hint-pair by an index.
+
+        Returns a WordTuple"""
+        raise NotImplementedError
+
+    def get_word(self, i):
+        """Get a word part of a specific entry by an index."""
+        return self.get_with_hint(i).word
+
+    __getitem__ = get_word
+
+    def _find_left(self, s):
+        # ported from bisect.bisect_left
+        lo, hi = 0, len(self)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if self.get_word(mid) < s:
+                lo = mid + 1
+            else:
+                hi = mid
+        return lo
+
+    def subset(self, charset_or_ranges):
+        """Returns a subset of corpus chosen by first characters of words."""
+        if isinstance(charset_or_ranges, str):
+            ranges = []
+            charset = _expand_subs(charset_or_ranges)
+            i, sl = 0, len(charset)
+            while i < sl:
+                sc = ord(charset[i])
+                ec = sc + 1
+                i += 1
+                while i < sl:
+                    if ord(charset[i]) == ec:
+                        ec += 1
+                        i += 1
+                    else:
+                        break
+
+                l = self._find_left(chr(sc))
+                r = self._find_left(chr(ec)) if ec < 0x110000 else len(self)
+                # chr(ord("\U0010FFFF") + 1) fails.
+
+                if l < r: ranges.append((l, r))
+        else:
+            ranges = charset_or_ranges
+        return SubsetCorpus(self, ranges)
+
+    # not used: for completeness
+    def index(self, w):
+        p = self._find_left(w)
+        if p >= len(self) or self.get_word(p) != w:
+            raise ValueError
+        return p
+
+    def __contains__(self, w):
+        p = self._find_left(w)
+        return p < len(self) and self.get_word(p) == w
+
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self.get_word(i)
+
+    def items(self):
+        """Return a corpus' view generating word-hint pairs."""
+        return self._CorpusItemsView(self)
+
+class _CorpusItemsView(collections.abc.Sized, collections.abc.Iterable):
+    """Corpus' view generating word-hint pairs."""
+    __slots__ = ('_corpus',)
+
+    def __init__(self, corpus):
+        self._corpus = corpus
+    def __len__(self):
+        return len(self._corpus)
+    def __getitem__(self, i):
+        return _corpus.get_with_hint(i)
+    def __iter__(self):
+        for i in range(len(self)):
+            yield self[i]
+
+class SubsetCorpus(CorpusBase):
+    """Subset corpus of some larger corpus."""
+    def __init__(self, d, ranges):
+        if (not isinstance(d, CorpusBase) or
+            not hasattr(d, 'is_words')):
+            raise ValueError("not a corpus", d)
+
+        self.d = d
+        self.__ranges = ranges
+        self.len = 0
+        self.ofstbl = []
+        self.is_words = d.is_words
+        for s, e in ranges:
+            l = e - s
+            if l <= 0:
+                continue
+            self.ofstbl.append((self.len + l, s - self.len))
+            self.len += l
+
+    def __len__(self):
+        return self.len
+
+    def get_word(self, i):
+        if i < 0 or i >= self.len:
+            raise IndexError
+        for e, o in self.ofstbl:
+            if i < e:
+                return self.d.get_word(i + o)
+        assert False
+
+    def get_with_hint(self, i):
+        if i < 0 or i >= self.len:
+            raise IndexError
+        for e, o in self.ofstbl:
+            if i < e:
+                return self.d.get_with_hint(i + o)
+        assert False
+
+class WordsCorpusBase(CorpusBase):
+    is_words = True
+
+class CharactersCorpusBase(CorpusBase):
+    is_words = False
+
+class _IterableBasedCorpusMixin():
+    """Corpus given by simple word list."""
+    def __init__(self, l):
+        self.l = list(sorted(l))
+        if len(self.l) < 1:
+            raise ValueError("Corpus cannot be empty")
+
+    def __len__(self):
+        return len(self.l)
+
+    def get_with_hint(self, i):
+        i = self.l[i]
+        if type(i) is str:
+            return WordTuple(i, i)
+        elif isinstance(i, WordTuple):
+            return i
+        else:
+            return WordTuple(*i)
+
+    def get_word(self, i):
+        i = self.l[i]
+        if type(i) is str:
+            return i
+        elif isinstance(i, WordTuple):
+            return i.word
+        else:
+            return i[0]
+
+class BasicCharacterCorpus(_IterableBasedCorpusMixin, CharactersCorpusBase): pass
+
+class SimpleWordCorpus(_IterableBasedCorpusMixin, WordsCorpusBase): pass
+
+### List of Corpuses
+
+class CorpusList:
+    shortname_mapping = {
+        'd': 'digit',
+        'l': 'lower',
+        'a': 'a',
+        'A': 'alnum',
+        'x': 'xdigit',
+        'X': 'X',
+        'B': 'base64',
+        'b': 'base64_fssafe',
+        's': 'graph',
+
+        'e': 'english',
+        'E': 'gutenberg10k',
+        'j': 'naist-jdic-simple',
+        'J': 'naist-jdic',
+    }
+    corpus_cache = {}
+
+    @classmethod
+    def get_corpus(self, target, *, diag=None):
+        target = self.shortname_mapping.get(target, target)
+        if target in self.corpus_cache:
+            pass
+        if target in Charlist.sets:
+            self.corpus_cache[target] = BasicCharacterCorpus(Charlist.sets[target])
+        elif target in Wordlist.preset_corpus:
+            self.corpus_cache[target] = SimpleWordCorpus(Wordlist.preset_corpus[target])
+        else:
+            try:
+                if '.' in __name__:
+                    from . import corpus_loader
+                else:
+                    import corpus_loader
+            except ImportError:
+                raise BadFormatError("external corpus support not installed")
+
+            self.corpus_cache[target] = corpus_loader.load_corpus(target, diag=diag, errorclass=BadFormatError)
+        return self.corpus_cache[target]
+
+### Builtin Corpuses
 
 class Charlist:
     def _annotate(l):
@@ -338,102 +562,22 @@ class Charlist:
     Base64_FSSAFE = AlphaNumeric + _annotate("-_")
     Symbols = _annotate(chr(c) for c in range(33,127))
 
-    mapping = {
-        "d": Digits,
-        "l": Lower,
+    sets = {
         "a": LowerAlphaNumeric,
-        "A": AlphaNumeric,
-        "x": Hexadecimal,
         "X": UpperHexadecimal,
-        "B": Base64,
-        "b": Base64_FSSAFE,
-        "s": Symbols,
+        "base64": Base64,
+        "base64_fssafe": Base64_FSSAFE,
         "alnum": AlphaNumeric,
         "digit": Digits,
         "lower": Lower,
         "upper": Upper,
         "xdigit": Hexadecimal,
         "base32": Base32,
-        "base32upper": Base32Upper
+        "base32upper": Base32Upper,
+        "graph": Symbols
     }
 
-WordTuple = collections.namedtuple('WordTuple', ('word', 'hint'))
-def _nextchar(c): return chr(ord(c) + 1)
-
-class CorpusBase(abcSequence):
-    def _find_left(self, s):
-        # ported from bisect.bisect_left
-        lo, hi = 0, len(self)
-        while lo < hi:
-            mid = (lo + hi) // 2
-            if self[mid].word < s:
-                lo = mid + 1
-            else:
-                hi = mid
-        return lo
-
-    def subset(self, charset):
-        i, sl = 0, len(charset)
-        ranges = []
-        charset = _expand_subs(charset)
-        while(i < sl):
-            sc = charset[i]
-            ec = _nextchar(sc)
-            i += 1
-            while(i < sl):
-                if charset[i] == ec:
-                    ec = _nextchar(ec)
-                    i += 1
-                else: break
-            l = self._find_left(sc)
-            r = self._find_left(ec)
-            ranges.append((l, r))
-        return SubsetCorpus(self, ranges)
-
-class SubsetCorpus(CorpusBase):
-    def __init__(self, d, ranges):
-        self.d = d
-        self.__ranges = ranges
-        self.len = 0
-        self.ofstbl = []
-        self.is_words = d.is_words
-        for s, e in ranges:
-            l = e - s
-            if l <= 0:
-                continue
-            self.ofstbl.append((self.len + l, s - self.len))
-            self.len += l
-
-    def __len__(self):
-        return self.len
-
-    def __getitem__(self, i):
-        if i < 0 or i >= self.len:
-            raise IndexError
-        for e, o in self.ofstbl:
-            if i < e:
-                return self.d[i + o]
-        assert False
-
-class WordsCorpusBase(CorpusBase):
-    is_words = True
-
-class SimpleWordCorpus(WordsCorpusBase):
-    def __init__(self, l):
-        self.l = sorted(list(l))
-
-    def __len__(self):
-        return len(self.l)
-
-    def __getitem__(self, i):
-        i = self.l[i]
-        if type(i) is str:
-            return WordTuple(i, i)
-        else:
-            return i
-
 class Wordlist:
-    # Builtin Corpuses
 
     # From https://simple.wikipedia.org/wiki/Wikipedia:Basic_English_ordered_wordlist
     BasicEnglish ="""
@@ -752,43 +896,10 @@ class Wordlist:
     writing wrong yawn year yearbook yellow yes yesterday you young
     yourself zebra zinc zookeeper zoology""".split()
 
-    mapping = {
-        "e": 'english',
-        "E": 'gutenberg10k',
-        "j": 'naist-jdic-simple',
-        "J": 'naist-jdic',
-    }
-
     preset_corpus = {
         "english": MoreBasicEnglish,
         "basicenglish": BasicEnglish
     }
-
-    corpus = {}
-
-    base_path = None
-    @classmethod
-    def load_wordlist(self, target, *, diag=None):
-        if target in self.mapping:
-            target = self.mapping[target]
-        if target in self.corpus:
-            return self.corpus[target]
-
-        if target in self.preset_corpus:
-            wlist = SimpleWordCorpus(sorted(self.preset_corpus[target]))
-        else:
-            try:
-                if '.' in __name__:
-                    from . import corpus_loader
-                else:
-                    import corpus_loader
-            except ImportError:
-                raise BadFormatError("external corpus support not installed")
-
-            wlist = corpus_loader.load_corpus(target, diag=diag, errorclass=BadFormatError)
-
-        self.corpus[target] = wlist
-        return wlist
 
 if __name__ == '__main__':
     main()
