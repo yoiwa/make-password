@@ -7,6 +7,8 @@
 
 import sys
 import re
+import bisect
+import collections, collections.abc
 from collections.abc import Sequence as abcSequence
 from random import SystemRandom
 from math import log2, ceil
@@ -82,14 +84,10 @@ def generate(fspec, count):
                 presep = "" if initial else sep if sep != None else " "
                 for c in range(0, ct):
                     w = wl[R.randrange(l1)]
-                    if type(w) is tuple:
-                        w, h = w
-                    else:
-                        w, h = w, w
                     s = presep if c == 0 else intersep
                     sh = " " if (s == "" and c != 0) else s
                     if sh: o.append(elem(0.0, True, s, sh))
-                    o.append(elem(e1, False, w, h))
+                    o.append(elem(e1, False, w.word, w.hint))
             else:
                 if ct != 0:
                     intersep = ""
@@ -104,7 +102,7 @@ def generate(fspec, count):
                         else:
                             w, h = w, w
                         ow.append(w)
-                        oh.append(h)
+                        oh.append(str(h))
                     o.append(elem(ct * e1, False, "".join(ow), "".join(oh)))
 
         for i in fspec:
@@ -174,8 +172,11 @@ def _parse_fspec(s, *, diag=None):
             iswords = True
 
         if subs:
-            subse = _expand_subs(subs)
-            wl = [w for w in wl if (w[0][0] if type(w) is tuple else w[0]) in subse]
+            if iswords:
+                wl = wl.subset(subs)
+            else:
+                subse = _expand_subs(subs)
+                wl = [w for w in wl if (w[0][0] if type(w) is tuple else w[0]) in subse]
             if len(wl) == 0:
                 raise BadFormatError("no words starting with [{}] in wordset {}".format(subs, pat))
             elif len(wl) == 1:
@@ -355,6 +356,81 @@ class Charlist:
         "base32": Base32,
         "base32upper": Base32Upper
     }
+
+WordTuple = collections.namedtuple('WordTuple', ('word', 'hint'))
+def _nextchar(c): return chr(ord(c) + 1)
+
+class CorpusBase(abcSequence):
+    def _find_left(self, s):
+        # ported from bisect.bisect_left
+        lo, hi = 0, len(self)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            if self[mid].word < s:
+                lo = mid + 1
+            else:
+                hi = mid
+        return lo
+
+    def subset(self, charset):
+        i, sl = 0, len(charset)
+        ranges = []
+        charset = _expand_subs(charset)
+        while(i < sl):
+            sc = charset[i]
+            ec = _nextchar(sc)
+            i += 1
+            while(i < sl):
+                if charset[i] == ec:
+                    ec = _nextchar(ec)
+                    i += 1
+                else: break
+            l = self._find_left(sc)
+            r = self._find_left(ec)
+            ranges.append((l, r))
+        return SubsetCorpus(self, ranges)
+
+class SubsetCorpus(CorpusBase):
+    def __init__(self, d, ranges):
+        self.d = d
+        self.__ranges = ranges
+        self.len = 0
+        self.ofstbl = []
+        self.is_words = d.is_words
+        for s, e in ranges:
+            l = e - s
+            if l <= 0:
+                continue
+            self.ofstbl.append((self.len + l, s - self.len))
+            self.len += l
+
+    def __len__(self):
+        return self.len
+
+    def __getitem__(self, i):
+        if i < 0 or i >= self.len:
+            raise IndexError
+        for e, o in self.ofstbl:
+            if i < e:
+                return self.d[i + o]
+        assert False
+
+class WordsCorpusBase(CorpusBase):
+    is_words = True
+
+class SimpleWordCorpus(WordsCorpusBase):
+    def __init__(self, l):
+        self.l = sorted(list(l))
+
+    def __len__(self):
+        return len(self.l)
+
+    def __getitem__(self, i):
+        i = self.l[i]
+        if type(i) is str:
+            return WordTuple(i, i)
+        else:
+            return i
 
 class Wordlist:
     # Builtin Corpuses
@@ -683,10 +759,12 @@ class Wordlist:
         "J": 'naist-jdic',
     }
 
-    corpus = {
+    preset_corpus = {
         "english": MoreBasicEnglish,
         "basicenglish": BasicEnglish
     }
+
+    corpus = {}
 
     base_path = None
     @classmethod
@@ -696,15 +774,18 @@ class Wordlist:
         if target in self.corpus:
             return self.corpus[target]
 
-        try:
-            if '.' in __name__:
-                from . import corpus_loader
-            else:
-                import corpus_loader
-        except ImportError:
-            raise BadFormatError("external corpus support not installed")
+        if target in self.preset_corpus:
+            wlist = SimpleWordCorpus(sorted(self.preset_corpus[target]))
+        else:
+            try:
+                if '.' in __name__:
+                    from . import corpus_loader
+                else:
+                    import corpus_loader
+            except ImportError:
+                raise BadFormatError("external corpus support not installed")
 
-        wlist = corpus_loader.load_corpus(target, diag=diag, errorclass=BadFormatError)
+            wlist = corpus_loader.load_corpus(target, diag=diag, errorclass=BadFormatError)
 
         self.corpus[target] = wlist
         return wlist

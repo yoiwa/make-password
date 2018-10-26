@@ -5,6 +5,11 @@ from contextlib import ExitStack
 corpus_base_path = None
 __module__ = sys.modules[__name__]
 
+if '.' in __name__:
+    from . import password_generator
+else:
+    import password_generator
+
 def load_corpus(target, *, rawname=False, diag=None, errorclass=RuntimeError):
         global corpus_base_path
         if not corpus_base_path:
@@ -12,9 +17,7 @@ def load_corpus(target, *, rawname=False, diag=None, errorclass=RuntimeError):
             corpus_base_path = Path(__module__.__file__).parent / 'corpus'
         fname = str(corpus_base_path / (target + ".corpus"))
 
-        no_apostroph = False
         fmt = False
-        in_header = True
 
         with ExitStack() as stack:
             try:
@@ -37,49 +40,44 @@ def load_corpus(target, *, rawname=False, diag=None, errorclass=RuntimeError):
                     raise errorclass('Unrecognized wordlist {} in file {}'.format(target, fname))
 
             if fmt == 'packed':
-                    wlist = load_compact_corpus(f, errorclass=errorclass)
+                wlist = load_compact_corpus(f, errorclass=errorclass)
+            elif fmt == 'hinted':
+                raise RuntimeError('hinted corpus is not supported anymore; convert it to compact')
             else:
-                    wlist = set()
-                    for l in f:
-                        l = l.strip()
-                        if l == b'':
-                            in_header = False
-                            continue
-                        if l.startswith(b'#'):
-                            if in_header:
-                                if l == b"#option no-apostroph":
-                                    no_apostroph = True
-                            continue
+                wlist = load_text_corpus(f, errorclass=errorclass)
 
-                        in_header = False
-                        if fmt:
-                            w = l.split(b'\t')
-                            if len(w) != 2:
-                                raise errorclass("invalid line in corpus: " + l)
-                            wlist.add((w[0].decode('utf-8'), w[1].decode('utf-8')))
-                        else:
-                            for word in l.split():
-                                if (word == b'' or
-                                    word.endswith(b"'") or
-                                    word.endswith(b"'s")):
-                                    continue
-                                for char in word:
-                                    if char not in b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'":
-                                        break
-                                    if no_apostroph and char == b"'"[0]:
-                                        break
-                                else:
-                                    wlist.add(str(word, 'ascii'))
-                    wlist = list(wlist)
             if diag != None:
                 diag.append("loaded {} words of corpus as {}".format(len(wlist), target))
             if (len(wlist) == 0):
                 raise errorclass("empty or bad corpus:" + target)
             return wlist
 
-class load_compact_corpus(abcSequence):
+### CompactCorpus
+class _lazystr:
+    __slots__ = ('_',)
+    def __init__(self, b, start, end):
+        self._ = (b, start, end)
+    def __str__(self):
+        if type(self._) is tuple:
+            _ = self._
+            self._ = _[0][_[1]:_[2]].decode('utf-8')
+            #print("LAZY: ({})->{}".format(_[1:], self._), file=sys.stderr)
+        return self._
+    def __repr__(self):
+        return "lazystr({!r})".format(str(self))
+
+class LazyWordTuple(password_generator.WordTuple):
+    @property
+    def hint(self):
+        return str(self[1])
+
+def load_compact_corpus(*args, **kwargs):
+    return CompactedCorpus(*args, **kwargs)
+
+class CompactedCorpus(password_generator.WordsCorpusBase):
+
     MAGIC = 0x3b9c787 # 7digits
-    VERSION = 1
+    VERSION = 2
     HEADER = b'#format packed\n'
     HEADER2 = b'#_-_-_-\n'
     MAXSIZE = 104857600
@@ -151,8 +149,8 @@ class load_compact_corpus(abcSequence):
 
     def __getitem__(self, i):
         if (i < 0 or i >= self.len or int(i) != i):
-            raise IndexError
-        return (self._get(i * 2 + 1), self._get(i * 2 + 2))
+            raise IndexError(i)
+        return LazyWordTuple(self._get(i * 2 + 1), self._getlazy(i * 2 + 2))
 
     def _getidx(self, i):
         o = self.tblofs + i * 8
@@ -162,4 +160,44 @@ class load_compact_corpus(abcSequence):
     def _get(self, i):
         o = self._getidx(i)
         o2 = self.dat.index(b'\n', o)
+        #print("NONLAZY: ({})->{}".format((o,o2), self.dat[o:o2].decode('utf-8')), file=sys.stderr)
         return self.dat[o:o2].decode('utf-8')
+
+    def _getlazy(self, i):
+        o = self._getidx(i)
+        o2 = self.dat.index(b'\n', o)
+        return _lazystr(self.dat, o, o2)
+
+### Text Corpus
+
+def load_text_corpus(f, errorclass=RuntimeError):
+    no_apostroph = False
+    in_header = True
+
+    wlist = set()
+    for l in f:
+        l = l.strip()
+        if l == b'':
+            in_header = False
+            continue
+        if l.startswith(b'#'):
+            if in_header:
+                if l == b"#option no-apostrophe":
+                    no_apostrophe = True
+                    continue
+
+        in_header = False
+        for word in l.split():
+            if (word == b'' or
+                word.endswith(b"'") or
+                word.endswith(b"'s")):
+                continue
+            for char in word:
+                if char not in b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'":
+                    break
+                if no_apostroph and char == b"'"[0]:
+                    break
+            else:
+                wlist.add(str(word, 'ascii'))
+    wlist = list(wlist)
+    return password_generator.SimpleWordCorpus(wlist)

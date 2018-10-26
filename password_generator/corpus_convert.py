@@ -437,7 +437,7 @@ def save_compact_corpus(ob, coll, boilerplate = None, rest=None):
             k = k.encode('ascii') + b'\n'
             h = h.encode('utf-8') + b'\n'
             coll2.append((k, h))
-    coll = coll2
+    coll = list(sorted(coll2))
 
     ll = len(coll)
 
