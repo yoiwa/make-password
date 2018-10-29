@@ -46,6 +46,7 @@ def generate(fspec, count):
     fspec, entropy = _parse_fspec(fspec, diag=diag)
     if count < 1:
         raise BadFormatError('bad count of passwords specified')
+    fspec, entropy = _resolve_entropy(fspec, entropy, diag=diag)
 
     elements = []
     result = []
@@ -63,23 +64,7 @@ def generate(fspec, count):
             nonlocal o_hint
 
             initial = not filling and i == 0
-
             e1 = wl.entropy()
-
-            if ct == 0:
-                if entropy == None or i != len(fspec) - 1:
-                    ct = 1
-                elif e >= entropy:
-                    ct = 0
-                else:
-                    ct = int(ceil((entropy - e) / e1))
-                if ncount == 0 and ct > 0:
-                    diag.append("Entropy computation: {0:.3f} * {2:d} = {3:.3f} bits".format(e1, e, ct, ct * e1))
-                e += ct * e1
-            else:
-                if ncount == 0:
-                    diag.append("Entropy computation: {0:.3f} * {2:d} = {3:.3f} bits".format(e1, e, ct, ct * e1))
-                e += ct * e1
 
             if wl.is_words:
                 intersep = sep if sep != None else " "
@@ -105,11 +90,6 @@ def generate(fspec, count):
 
         for i, s in enumerate(fspec):
             proc(False, i, *s)
-        while(entropy != None and e < entropy):
-            proc(True, len(fspec)-1, *(fspec[-1]))
-
-        if ncount == 0:
-            diag.append("Entropy computation: total generated entropy {:.3f} bits".format(e))
 
         o_word = "".join(x['password'] for x in o)
         o_hint = "".join(x['hint'] for x in o)
@@ -119,35 +99,99 @@ def generate(fspec, count):
 
     return result, {'passwords': result, 'elements': elements, 'diag': "\n".join(diag), 'entropy': e}
 
+### TokenParser
+import sys, re, functools
+import inspect
+
+ARGTEST=True
+
+class ParserError(Exception): pass
+
+def _remove_named_refs(s):
+    l = re.split(r'(\\.|\[\^?\]?(?:[^\]\\]|\\.)*\])', s)
+    #print(list(enumerate(l)))
+    l = [re.sub(r'\(\?P<[^>]+>', '(?:', s) if n % 2 == 0 else s for n, s in enumerate(l)]
+    return "".join(l)
+
+def tokenparser(rex, **kwargs):
+    trans={}
+    subrex={}
+    if kwargs:
+        for kwd, var in kwargs.items():
+            if type(var) == str:
+                subrex[kwd] = var
+            else:
+                trans[kwd] = var
+                subrex[kwd] = "(?P<{}>{})".format(kwd, _remove_named_refs(var._tokenparser_regexp))
+        try:
+            rex = rex.format_map(subrex)
+        except KeyError as e:
+            raise TypeError("required keyword argument {} (referenced from parser pattern) not given".format(e.args[0]))
+    robj = re.compile(rex)
+    if ARGTEST:
+        for a in trans:
+            if a not in robj.groupindex:
+                raise TypeError("keyword argument {} not referenced in pattern".format(a))
+    def to_wrap(f):
+        if ARGTEST:
+            inspect.signature(f).bind(**robj.groupindex)
+            # raises TypeError
+        @functools.wraps(f)
+        def wrapper(s):
+            if s == None:
+                return None
+            mo = robj.fullmatch(s)
+            if not mo:
+                raise ParserError(f.__name__, s)
+            mo = mo.groupdict()
+            for kwd, ff in trans.items():
+                mo[kwd] = ff(mo[kwd])
+            return f(**mo)
+        wrapper._tokenparser_regexp = rex
+        wrapper.repeated = functools.partial(_repeated, wrapper)
+        return wrapper
+    return to_wrap
+
+def _repeated(f, sep='', name=None):
+    rex = _remove_named_refs(f._tokenparser_regexp)
+    rex_r = "(?P<r>({}{})*)".format(sep, rex)
+    rex1 = r"(?P<l>{}){}".format(rex, rex_r)
+    rex2 = r"{}{}".format(sep, rex1)
+    name = name or (f.__name__ + "_repeated")
+    robj1 = re.compile(rex1)
+    robj2 = re.compile(rex2)
+    def _rest(s, l):
+        if s == "":
+            return
+        mo = robj2.fullmatch(s)
+        l.append(f(mo.group('l')))
+        _rest(mo.group('r'), l)
+    def _parser(s):
+        if s == None:
+            return None
+        mo = robj1.fullmatch(s)
+        if not mo:
+            raise ParserError(name, s)
+        l = [f(mo.group('l'))]
+        _rest(mo.group('r'), l)
+        return l
+    _parser.__name__ = name
+    _parser._tokenparser_regexp = rex1
+    return _parser
+####
+
 def _remove_backslash(s):
     if s == None: return None
     return re.sub(r"\\(.)", r"\1", s)
 
 def _parse_fspec(s, *, diag=None):
-    o = []
-    i = 0
-    orig_s = s
-    while(s != ""):
-        mo = re.match(r"""\A
-                          (?:
-                             (?P<sep1>[\ \-/,.])
-                            |"(?P<sep2>(?:[^\\\"]|\\.)*)"
-                          )?
-                          (?:
-                             (?P<pat1>[a-zA-Z])
-                            |\[:?
-                              (?P<pat2>[\w\-_]+)
-                                 (?:\^(?P<subs>[\w_\-]+))?
-                              :?\])
-                          (?P<dig>\d*)
-                          (?P<rest>.*)\Z""", s, re.X)
+    @tokenparser('(?P<sep1>[\ \-/,.])|"(?P<sep2>([^\\\"]|\\.)*)"')
+    def p_separator(sep1, sep2):
+        return sep1 or _remove_backslash(sep2)
 
-        if not mo:
-            break
-        (sep1, sep2, pat1, pat2, subs, dig, s) = mo.group('sep1', 'sep2', 'pat1', 'pat2', 'subs', 'dig', 'rest')
-        sep = sep1 or _remove_backslash(sep2)
+    @tokenparser(r'(?P<pat1>[a-zA-Z])|\[(?P<pat2>[\w\-_]+)(\^(?P<subs>[\w_\-]+))?\]')
+    def p_simplecorpus(pat1, pat2, subs):
         pat = pat1 or pat2
-
         wl = CorpusList.get_corpus(pat, diag=diag)
 
         if subs:
@@ -160,20 +204,84 @@ def _parse_fspec(s, *, diag=None):
         if len(wl) <= 1:
             raise BadFormatError("not enough candidate in wordset {}".format(subs, pat))
 
-        dig = int(dig) if dig != '' else 0
-        o.append((sep, wl, dig))
-        i += 1
+        return wl
 
-    mo = re.match(r"\A(?: *:(\d+))?\Z", s)
-    if not mo:
-        raise BadFormatError("parse failed at " + s)
+    @tokenparser(r'(?P<dig>\d+)')
+    def p_number(dig):
+        return int(dig)
 
-    if len(o) == 0:
-        raise BadFormatError("No format specifier found in " + s)
+    @tokenparser(r'{corpus}{repeat}?', corpus=p_simplecorpus, repeat=p_number)
+    def p_cc_element(corpus, repeat):
+        return (corpus, repeat or 0)
 
-    entropy = mo.group(1)
-    entropy = entropy and float(entropy)
-    return (o, entropy)
+    p_cc_elements = p_cc_element.repeated()
+
+    @tokenparser(r'({simple}|\{{{compound}\}})', simple=p_simplecorpus, compound=p_cc_elements)
+    def p_corpus(simple, compound):
+        if simple != None:
+            return simple
+        else:
+            if '.' in __name__: from . import combinatorial_passwords
+            else: import combinatorial_passwords
+            return combinatorial_passwords.CombinatorialGenerator(compound)
+
+    @tokenparser('{sep}?{corpus}{repeat}?',
+                 sep=p_separator, corpus=p_corpus, repeat=p_number)
+    def p_group(sep, corpus, repeat):
+        return (sep, corpus, repeat)
+
+    p_groups = p_group.repeated()
+
+    @tokenparser('{spec}(:{entropy})?', spec=p_groups, entropy=p_number)
+    def p_spec(spec, entropy):
+        return (spec, entropy)
+
+    try:
+        return p_spec(s)
+    except ParserError:
+        raise BadFormatError("cannot parse format spec")
+
+def _resolve_entropy(s, entropy, diag=None):
+    "extend spec to meet requested entropy."
+    slen = len(s)
+    ss = slen if entropy == None and s[slen-1][2] != None else slen - 1
+    total_entropy = 0.0
+    o = []
+    for (sep, wl, cnt) in s[0:ss]:
+        if hasattr(wl, 'get_repeated') and cnt != None:
+            wl = wl.get_repeated(cnt)
+            cnt = 1
+        if cnt == None:
+            cnt = 1
+        o.append((sep, wl, cnt))
+        e1 = wl.entropy()
+        ec = e1 * cnt
+        total_entropy += ec
+        if diag != None:
+            diag.append("Entropy computation: {0:.3f} * {1:d} = {2:.3f} bits".format(e1, cnt, ec))
+    sep, wl, cnt = s[-1]
+    if entropy != None and total_entropy < entropy:
+        if hasattr(wl, 'get_repeated'):
+            if cnt == None:
+                wl = wl.get_repeated(entropy = entropy - total_entropy)
+            else:
+                wl = wl.get_repeated(cnt)
+            cnt = 1
+        elif cnt == None:
+            cnt = int(ceil((entropy - total_entropy) / wl.entropy()))
+            e1 = wl.entropy()
+        e1 = wl.entropy()
+        ec = e1 * cnt
+        if ec <= 0.0:
+            raise BadFormatError("cannot meet entropy request by empty/unit corpus")
+        while(total_entropy < entropy):
+            o.append((sep, wl, cnt))
+            total_entropy += ec
+            if diag != None:
+                diag.append("Entropy computation: {0:.3f} * {1:d} = {2:.3f} bits".format(e1, cnt, ec))
+    if diag != None:
+        diag.append("Entropy computation: total generated entropy {:.3f} bits".format(total_entropy))
+    return (o, total_entropy)
 
 def parse_commandline(parser):
     """Parse command-line arguments.
@@ -306,7 +414,7 @@ class CorpusBase(abcSequence):
 
     def entropy(self):
         """Return the entropy contained in this corpus."""
-        l = len(self)
+        l = self.len()
         if l < 1:
             raise ValueError("Empty corpus: undefined entropy")
         return log2(l)
@@ -315,7 +423,7 @@ class CorpusBase(abcSequence):
         """Get a random word with hint from this corpus.
 
         Returns a WordTuple."""
-        l = len(self)
+        l = self.len()
         if l < 1:
             raise ValueError("Empty corpus: cannot generate passphrase")
         return self.get_with_hint(R.randrange(l))
@@ -331,7 +439,15 @@ class CorpusBase(abcSequence):
         """Get a word part of a specific entry by an index."""
         return self.get_with_hint(i).word
 
-    __getitem__ = get_word
+    def __getitem__(self, i):
+        return self.get_word(i)
+
+    @abstractmethod
+    def len(self):
+        raise NotImplementedError
+
+    def __len__(self):
+        return self.len()
 
     def _find_left(self, s):
         # ported from bisect.bisect_left
@@ -422,7 +538,7 @@ class SubsetCorpus(CorpusBase):
             self.ofstbl.append((self.len + l, s - self.len))
             self.len += l
 
-    def __len__(self):
+    def len(self):
         return self.len
 
     def get_word(self, i):
@@ -454,7 +570,7 @@ class _IterableBasedCorpusMixin():
         if len(self.l) < 1:
             raise ValueError("Corpus cannot be empty")
 
-    def __len__(self):
+    def len(self):
         return len(self.l)
 
     def get_with_hint(self, i):

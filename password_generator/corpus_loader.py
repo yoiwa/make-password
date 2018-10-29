@@ -47,8 +47,8 @@ def load_corpus(target, *, rawname=False, diag=None, errorclass=RuntimeError):
                 wlist = load_text_corpus(f, errorclass=errorclass)
 
             if diag != None:
-                diag.append("loaded {} words of corpus as {}".format(len(wlist), target))
-            if (len(wlist) == 0):
+                diag.append("loaded {} words of corpus as {}".format(wlist.len(), target))
+            if (wlist.len() == 0):
                 raise errorclass("empty or bad corpus:" + target)
             return wlist
 
@@ -109,7 +109,7 @@ class CompactedCorpus(password_generator.WordsCorpusBase):
         except ValueError:
             raise errorclass('bad corpus: bad magic line {}'.format(s))
 
-        self.len = l
+        self.l = l
 
         tbllen = (l * 2 + 1) * 8
 
@@ -127,16 +127,16 @@ class CompactedCorpus(password_generator.WordsCorpusBase):
         if self._getidx(0) != self.MAGIC:
             raise errorclass('bad corpus: bad index magic {:08x}'.format(self._getidx(0)))
 
-    def __len__(self):
-        return self.len
+    def len(self):
+        return self.l
 
     def get_word(self, i):
-        if (i < 0 or i >= self.len or int(i) != i):
+        if (i < 0 or i >= self.l or int(i) != i):
             raise IndexError(i)
         return self._get(i * 2 + 1)
 
     def get_with_hint(self, i):
-        if (i < 0 or i >= self.len or int(i) != i):
+        if (i < 0 or i >= self.l or int(i) != i):
             raise IndexError(i)
         return password_generator.WordTuple(self._get(i * 2 + 1), self._get(i * 2 + 2))
 
