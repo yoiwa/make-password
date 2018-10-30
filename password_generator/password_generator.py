@@ -210,6 +210,10 @@ def _parse_fspec(s, *, diag=None):
     def p_number(dig):
         return int(dig)
 
+    @tokenparser(r'(?P<dig>\d+(?:\.\d*)?)')
+    def p_float(dig):
+        return float(dig)
+
     @tokenparser(r'{corpus}{repeat}?', corpus=p_simplecorpus, repeat=p_number)
     def p_cc_element(corpus, repeat):
         return (corpus, repeat or 0)
@@ -226,7 +230,10 @@ def _parse_fspec(s, *, diag=None):
                 else: import combinatorial_passwords
             except ImportError:
                 raise BadFormatError("combinatorial password support not installed")
-            return combinatorial_passwords.CombinatorialGenerator(compound)
+            try:
+                return combinatorial_passwords.CombinatorialGenerator(compound)
+            except ValueError as e:
+                raise BadFormatError(*e.args)
 
     @tokenparser('{sep}?{corpus}{repeat}?',
                  sep=p_separator, corpus=p_corpus, repeat=p_number)
@@ -235,7 +242,7 @@ def _parse_fspec(s, *, diag=None):
 
     p_groups = p_group.repeated()
 
-    @tokenparser('{spec}(:{entropy})?', spec=p_groups, entropy=p_number)
+    @tokenparser('{spec}(:{entropy})?', spec=p_groups, entropy=p_float)
     def p_spec(spec, entropy):
         return (spec, entropy)
 
