@@ -40,11 +40,11 @@ def load_corpus(target, *, rawname=False, diag=None, errorclass=RuntimeError):
                     raise errorclass('Unrecognized wordlist {} in file {}'.format(target, fname))
 
             if fmt == 'packed':
-                wlist = load_compact_corpus(f, errorclass=errorclass)
+                wlist = load_compact_corpus(f, name=target, errorclass=errorclass)
             elif fmt == 'hinted':
                 raise RuntimeError('hinted corpus is not supported anymore; convert it to compact')
             else:
-                wlist = load_text_corpus(f, errorclass=errorclass)
+                wlist = load_text_corpus(f, name=target, errorclass=errorclass)
 
             if diag != None:
                 diag.append("loaded {} words of corpus as {}".format(wlist.len(), target))
@@ -65,7 +65,7 @@ class CompactedCorpus(password_generator.WordsCorpusBase):
     HEADER2 = b'#_-_-_-\n'
     MAXSIZE = 104857600
 
-    def __init__(self, f, load_header=True, errorclass=RuntimeError):
+    def __init__(self, f, load_header=True, name="", errorclass=RuntimeError):
 
         if isinstance(f, str):
             f = open(f, 'rb')
@@ -127,6 +127,8 @@ class CompactedCorpus(password_generator.WordsCorpusBase):
         if self._getidx(0) != self.MAGIC:
             raise errorclass('bad corpus: bad index magic {:08x}'.format(self._getidx(0)))
 
+        self.name = name
+
     def len(self):
         return self.l
 
@@ -153,7 +155,7 @@ class CompactedCorpus(password_generator.WordsCorpusBase):
 
 ### Text Corpus
 
-def load_text_corpus(f, errorclass=RuntimeError):
+def load_text_corpus(f, name="", errorclass=RuntimeError):
     no_apostroph = False
     in_header = True
 
@@ -183,4 +185,4 @@ def load_text_corpus(f, errorclass=RuntimeError):
             else:
                 wlist.add(str(word, 'ascii'))
     wlist = list(wlist)
-    return password_generator.SimpleWordCorpus(wlist)
+    return password_generator.SimpleWordCorpus(wlist, name=name)

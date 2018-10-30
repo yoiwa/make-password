@@ -52,17 +52,17 @@ def generate(fspec, count):
     result = []
 
     for ncount in range(count):
-        e = 0.0
         o = []
 
-        def elem(e, f, o, h):
-            return {'entropy': e, 'separator': f, 'password': o, 'hint': h }
+        def elem(e, f, o, h, c=None, ct=1):
+            d = {'entropy': e, 'separator': f, 'password': o, 'hint': h}
+            if c != None:
+                d['corpus_source'] = str(c)
+            if not f:
+                d['repeat_count'] = ct
+            return d
 
         def proc(filling, i, sep, wl, ct):
-            nonlocal e
-            nonlocal o
-            nonlocal o_hint
-
             initial = not filling and i == 0
             e1 = wl.entropy()
 
@@ -73,20 +73,20 @@ def generate(fspec, count):
                     w = wl.get_randomly()
                     s = presep if c == 0 else intersep
                     sh = " " if (s == "" and c != 0) else s
-                    if sh: o.append(elem(0.0, True, s, sh))
-                    o.append(elem(e1, False, w.word, w.hint))
+                    if sh: o.append(elem(0.0, True, s, sh, None))
+                    o.append(elem(e1, False, w.word, w.hint, wl))
             else:
                 if ct != 0:
                     intersep = ""
                     presep = "" if initial else sep
-                    if presep: o.append(elem(0.0, True, presep, presep))
+                    if presep: o.append(elem(0.0, True, presep, presep, None))
                     ow = []
                     oh = []
                     for c in range(0, ct):
                         w = wl.get_randomly()
                         ow.append(w.word)
                         oh.append(w.hint)
-                    o.append(elem(ct * e1, False, "".join(ow), "".join(oh)))
+                    o.append(elem(ct * e1, False, "".join(ow), "".join(oh), wl, ct=ct))
 
         for i, s in enumerate(fspec):
             proc(False, i, *s)
@@ -97,7 +97,7 @@ def generate(fspec, count):
         elements.append(o)
         result.append((o_word, o_hint))
 
-    return result, {'passwords': result, 'elements': elements, 'diag': "\n".join(diag), 'entropy': e}
+    return result, {'passwords': result, 'elements': elements, 'diag': "\n".join(diag), 'entropy': entropy}
 
 ### TokenParser
 import sys, re, functools
@@ -221,8 +221,11 @@ def _parse_fspec(s, *, diag=None):
         if simple != None:
             return simple
         else:
-            if '.' in __name__: from . import combinatorial_passwords
-            else: import combinatorial_passwords
+            try:
+                if '.' in __name__: from . import combinatorial_passwords
+                else: import combinatorial_passwords
+            except ImportError:
+                raise BadFormatError("combinatorial password support not installed")
             return combinatorial_passwords.CombinatorialGenerator(compound)
 
     @tokenparser('{sep}?{corpus}{repeat}?',
@@ -412,6 +415,9 @@ def _expand_subs(s):
 class CorpusBase(abcSequence):
     """Corpus instance for random passphrase generation."""
 
+    def __str__(self):
+        return "<corpus {}: #{}>".format(self.name, self.len())
+
     def entropy(self):
         """Return the entropy contained in this corpus."""
         l = self.len()
@@ -449,6 +455,10 @@ class CorpusBase(abcSequence):
     def __len__(self):
         return self.len()
 
+    def __bool__(self):
+        return (self.len() != 0)
+        # default __bool__ delegates to __index__, causing overflow
+
     def _find_left(self, s):
         # ported from bisect.bisect_left
         lo, hi = 0, len(self)
@@ -459,6 +469,22 @@ class CorpusBase(abcSequence):
             else:
                 hi = mid
         return lo
+
+    def index(self, w):
+        p = self._find_left(w)
+        if p >= len(self) or self.get_word(p) != w:
+            raise ValueError
+        return p
+
+    def __contains__(self, w):
+        p = self._find_left(w)
+        return p < len(self) and self.get_word(p) == w
+
+    def get_hint_by_word(self, w):
+        try:
+            return self.get_with_hint(self.index(w)).hint
+        except ValueError:
+            return None
 
     def subset(self, charset_or_ranges):
         """Returns a subset of corpus chosen by first characters of words."""
@@ -487,16 +513,6 @@ class CorpusBase(abcSequence):
         return SubsetCorpus(self, ranges)
 
     # not used: for completeness
-    def index(self, w):
-        p = self._find_left(w)
-        if p >= len(self) or self.get_word(p) != w:
-            raise ValueError
-        return p
-
-    def __contains__(self, w):
-        p = self._find_left(w)
-        return p < len(self) and self.get_word(p) == w
-
     def __iter__(self):
         for i in range(len(self)):
             yield self.get_word(i)
@@ -528,21 +544,22 @@ class SubsetCorpus(CorpusBase):
 
         self.d = d
         self.__ranges = ranges
-        self.len = 0
+        self.l = 0
         self.ofstbl = []
         self.is_words = d.is_words
+        self.name = d.name + "(subset)"
         for s, e in ranges:
             l = e - s
             if l <= 0:
                 continue
-            self.ofstbl.append((self.len + l, s - self.len))
-            self.len += l
+            self.ofstbl.append((self.l + l, s - self.l))
+            self.l += l
 
     def len(self):
-        return self.len
+        return self.l
 
     def get_word(self, i):
-        if i < 0 or i >= self.len:
+        if i < 0 or i >= self.l:
             raise IndexError
         for e, o in self.ofstbl:
             if i < e:
@@ -550,7 +567,7 @@ class SubsetCorpus(CorpusBase):
         assert False
 
     def get_with_hint(self, i):
-        if i < 0 or i >= self.len:
+        if i < 0 or i >= self.l:
             raise IndexError
         for e, o in self.ofstbl:
             if i < e:
@@ -565,7 +582,8 @@ class CharactersCorpusBase(CorpusBase):
 
 class _IterableBasedCorpusMixin():
     """Corpus given by simple word list."""
-    def __init__(self, l):
+    def __init__(self, l, name=""):
+        self.name = name
         self.l = list(sorted(l))
         if len(self.l) < 1:
             raise ValueError("Corpus cannot be empty")
@@ -622,9 +640,9 @@ class CorpusList:
         if target in self.corpus_cache:
             pass
         if target in Charlist.sets:
-            self.corpus_cache[target] = BasicCharacterCorpus(Charlist.sets[target])
+            self.corpus_cache[target] = BasicCharacterCorpus(Charlist.sets[target], name=target)
         elif target in Wordlist.preset_corpus:
-            self.corpus_cache[target] = SimpleWordCorpus(Wordlist.preset_corpus[target])
+            self.corpus_cache[target] = SimpleWordCorpus(Wordlist.preset_corpus[target], name=target)
         else:
             try:
                 if '.' in __name__:

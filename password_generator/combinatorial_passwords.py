@@ -44,7 +44,9 @@ class CombinatorialGenerator(password_generator.WordsCorpusBase):
         self.sets = tuple(sets)
         self.lens = tuple(lens)
         self.reqcounts = tuple(reqcounts)
+        self.wordsets = [d for d, _ in wordsets]
         self.comb_cache = {}
+        self.name = "combinatrial({})".format([wl.name for wl in self.wordsets])
 
     def get_repeated(self, *n, **k):
         return CombinatorialWordDictionary(self, *n, **k)
@@ -57,7 +59,11 @@ class CombinatorialGenerator(password_generator.WordsCorpusBase):
             prep = _expand_subs
         else:
             prep = lambda x: x
-        sets = [(0, frozenset(prep(wordsets[i][0])), i) for i in range(len(wordsets))]
+        sets = []
+        for i, (d, _) in enumerate(wordsets):
+            if d.is_words:
+                raise ValueError("only character-based set can be used for combinatorial passwords")
+            sets.append((0, frozenset(prep(wordsets[i][0])), i))
         outsets = []
         for round in range(len(wordsets)):
             do_repeat = False
@@ -101,6 +107,10 @@ class CombinatorialGenerator(password_generator.WordsCorpusBase):
     def get_with_hint(x):
         raise IndexError
 
+    def subset():
+        # until output is sorted
+        raise ValueError("combinatorial corpus is not subsettable")
+
 class CombinatorialWordDictionary(password_generator.WordsCorpusBase):
     def __init__(self, combi, *a, entropy=None):
         self.__dict__.update(combi.__dict__)
@@ -119,7 +129,8 @@ class CombinatorialWordDictionary(password_generator.WordsCorpusBase):
         n = max(int(ceil(entropy / log2(nc))), sum(self.reqcounts))
         # initial guess:
         #   Number of combinations is always less than those without charset restrictions.
-        #   Thus, (entropy/log2(nc)) characters is not exceeding the solution.
+        #   Thus, floor(entropy/log2(nc)) characters is below the solution,
+        #   and ceil(entropy/log2(nc)) is smaller or equal to the minimal integer solution.
         #   Also, sum(reqcounts) characters is required to meet charset restrictions.
 
         while True:
@@ -154,7 +165,7 @@ class CombinatorialWordDictionary(password_generator.WordsCorpusBase):
             if n == 0:
                 assert(hi - lo == 1)
                 assert(x == lo)
-                return ""
+                return []
 
             assert(hi - lo == self.comb_cache[(n, v)])
             assert(lo <= x < hi)
@@ -188,10 +199,11 @@ class CombinatorialWordDictionary(password_generator.WordsCorpusBase):
             c = self.sets[i][k]
             n_lo = elo + k * charn
             n_hi = n_lo + charn
-            return c + sub(x, n - 1, self._v_decr(v,i), n_lo, n_hi)
+            return [c] + sub(x, n - 1, self._v_decr(v,i), n_lo, n_hi)
 
         s = sub(x, self.n, self.reqcounts, 0, self.combs)
-        return password_generator.WordTuple(s, s)
+
+        return password_generator.WordTuple("".join(s), self.get_hint_by_word(s))
 
     @staticmethod
     def _v_decr(v, i, alli=None):
@@ -225,6 +237,32 @@ class CombinatorialWordDictionary(password_generator.WordsCorpusBase):
 
         return rec(n, v)
 
+    def subset(self, set):
+        # until output is sorted
+        raise ValueError("combinatorial corpus is not subsettable")
+
+    def index(self, w):
+        # until output is sorted
+        raise ValueError("combinatorial corpus is not subsettable")
+
+    def __contains__(self, w):
+        raise NotImplementedError
+
+    def get_hint_by_word(self, w):
+        # expand hint based on most-comprehensive base corpus:
+        o = []
+        for i in w:
+            r = None
+            for d in self.wordsets:
+                k = d.get_hint_by_word(i)
+                if k != None and len(k) > len(r or ""):
+                    r = k
+            if r == None:
+                return None
+            o.append(r)
+
+        return "".join(o)
+        
 def main():
     from random import SystemRandom
     R = SystemRandom()
