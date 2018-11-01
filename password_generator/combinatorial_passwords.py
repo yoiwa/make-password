@@ -8,6 +8,8 @@
 if '.' in __name__: from . import password_generator
 else: import password_generator
 
+BadFormatError = password_generator.BadFormatError
+
 from math import log2, ceil
 
 # n = remaining characters to generate
@@ -62,7 +64,7 @@ class CombinatorialGenerator(password_generator.WordsCorpusBase):
         sets = []
         for i, (d, _) in enumerate(wordsets):
             if d.is_words:
-                raise ValueError("only character-based set can be used for combinatorial passwords")
+                raise BadFormatError("only character-based set can be used for combinatorial passwords")
             sets.append((0, frozenset(prep(wordsets[i][0])), i))
         outsets = []
         for round in range(len(wordsets)):
@@ -78,14 +80,14 @@ class CombinatorialGenerator(password_generator.WordsCorpusBase):
                     o.append(e)
                 elif s.issuperset(s1):
                     if canonical:
-                        raise ValueError("set {} ({}) is not disjoint with set {}: {} (non-canonical input)".format
+                        raise BadFormatError("set {} ({}) is not disjoint with set {}: {} (non-canonical input)".format
                                          (i, wordsets[i][0], i1, wordsets[i1][0]))
                     if l == l1:
-                        raise ValueError("set {} ({}) is sum of some other sets (including set {}: {})".format
+                        raise BadFormatError("set {} ({}) is sum of some other sets (including set {}: {})".format
                                          (i, wordsets[i][0], i1, wordsets[i1][0]))
                     o.append((l - l1, s - s1, i))
                 else:
-                    raise ValueError("set {} ({}) has partial overwrap with set {}: {}".format
+                    raise BadFormatError("set {} ({}) has partial overwrap with set {}: {}".format
                                      (i, wordsets[i][0], i1, wordsets[i1][0]))
             sets = o
         #print("final: outsets={}".format(outsets))
@@ -122,10 +124,13 @@ class CombinatorialWordDictionary(password_generator.WordsCorpusBase):
         else:
             raise TypeError("either and only one of n or entropy must be given {}".format((a, entropy)))
 
+    def password_elements(self):
+        return self.n
+
     def __guess_n(self, entropy):
         nc = sum(self.lens)
         if (nc < 2):
-            raise ValueError("impossible to generate")
+            raise BadFormatError("impossible to generate combinatorial corpus")
         n = max(int(ceil(entropy / log2(nc))), sum(self.reqcounts))
         # initial guess:
         #   Number of combinations is always less than those without charset restrictions.
@@ -147,12 +152,12 @@ class CombinatorialWordDictionary(password_generator.WordsCorpusBase):
         if self.combs == None:
             combs = self.combinations(self.n, self.lens, self.reqcounts, cache=self.comb_cache)
             if combs == 0:
-                raise ValueError("impossible to generate")
+                raise BadFormatError("impossible to generate combinatorial corpus")
             self.combs = combs
         return self.combs
 
     def entropy(self):
-        # integer overflow
+        # not use len(self) to avoid integer overflow
         return log2(self.len())
 
     def get_with_hint(self, x):

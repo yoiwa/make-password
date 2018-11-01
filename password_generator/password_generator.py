@@ -253,42 +253,48 @@ def _parse_fspec(s, *, diag=None):
 
 def _resolve_entropy(s, entropy, diag=None):
     "extend spec to meet requested entropy."
-    slen = len(s)
-    ss = slen if entropy == None and s[slen-1][2] != None else slen - 1
-    total_entropy = 0.0
     o = []
-    for (sep, wl, cnt) in s[0:ss]:
-        if hasattr(wl, 'get_repeated') and cnt != None:
-            wl = wl.get_repeated(cnt)
-            cnt = 1
-        if cnt == None:
-            cnt = 1
+    total_entropy = 0.0
+    def _add(s, entropy_goal=None):
+        nonlocal total_entropy
+        sep, wl, cnt = s
+        if entropy_goal == None:
+            if hasattr(wl, 'get_repeated') and cnt != None:
+                wl = wl.get_repeated(cnt)
+                cnt = 1
+            if cnt == None:
+                cnt = 1
+        else:
+            if hasattr(wl, 'get_repeated'):
+                if cnt == None:
+                    wl = wl.get_repeated(entropy = entropy - total_entropy)
+                else:
+                    wl = wl.get_repeated(cnt)
+                cnt = 1
+            elif cnt == None:
+                cnt = int(ceil((entropy - total_entropy) / wl.entropy()))
+                e1 = wl.entropy()
         o.append((sep, wl, cnt))
         e1 = wl.entropy()
         ec = e1 * cnt
+        if ec < 0.0:
+            raise BadFormatError("cannot use empty corpus")
+        elif (ec <= 0.0 and entropy_goal != None):
+            raise BadFormatError("cannot meet entropy request by unit corpus")
         total_entropy += ec
         if diag != None:
-            diag.append("Entropy computation: {0:.3f} * {1:d} = {2:.3f} bits".format(e1, cnt, ec))
-    sep, wl, cnt = s[-1]
-    if entropy != None and total_entropy < entropy:
-        if hasattr(wl, 'get_repeated'):
-            if cnt == None:
-                wl = wl.get_repeated(entropy = entropy - total_entropy)
-            else:
-                wl = wl.get_repeated(cnt)
-            cnt = 1
-        elif cnt == None:
-            cnt = int(ceil((entropy - total_entropy) / wl.entropy()))
-            e1 = wl.entropy()
-        e1 = wl.entropy()
-        ec = e1 * cnt
-        if ec <= 0.0:
-            raise BadFormatError("cannot meet entropy request by empty/unit corpus")
+            pe = wl.password_elements() or 1
+            e2, cnt2 = e1 / pe, cnt * pe
+            diag.append("Entropy computation: {s}{0:.3f} * {1:d} = {2:.3f} bits".
+                        format(e2, cnt2, ec, s="~ "[int(pe == 1)]))
+
+    slen = len(s)
+    ss = slen-1 if entropy != None and s[slen-1][2] == None else slen
+    for e in s[0:ss]:
+        _add(e, entropy_goal=None)
+    if entropy != None:
         while(total_entropy < entropy):
-            o.append((sep, wl, cnt))
-            total_entropy += ec
-            if diag != None:
-                diag.append("Entropy computation: {0:.3f} * {1:d} = {2:.3f} bits".format(e1, cnt, ec))
+            _add(s[-1], entropy_goal=(entropy - total_entropy))
     if diag != None:
         diag.append("Entropy computation: total generated entropy {:.3f} bits".format(total_entropy))
     return (o, total_entropy)
@@ -431,6 +437,9 @@ class CorpusBase(abcSequence):
         if l < 1:
             raise ValueError("Empty corpus: undefined entropy")
         return log2(l)
+
+    def password_elements(self):
+        return 1
 
     def get_randomly(self):
         """Get a random word with hint from this corpus.
