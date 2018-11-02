@@ -285,8 +285,8 @@ def _resolve_entropy(s, entropy, diag=None):
         if diag != None:
             pe = wl.password_elements() or 1
             e2, cnt2 = e1 / pe, cnt * pe
-            diag.append("Entropy computation: {s}{0:.3f} * {1:d} = {2:.3f} bits".
-                        format(e2, cnt2, ec, s="~ "[int(pe == 1)]))
+            diag.append("Entropy: {0:>7s} * {1:>2d} = {2:7.3f} bits from {3}".
+                        format(("%c%.3f" % ("~ "[int(pe == 1)], e2)), cnt2, ec, wl.name))
 
     slen = len(s)
     ss = slen-1 if entropy != None and s[slen-1][2] == None else slen
@@ -296,7 +296,7 @@ def _resolve_entropy(s, entropy, diag=None):
         while(total_entropy < entropy):
             _add(s[-1], entropy_goal=(entropy - total_entropy))
     if diag != None:
-        diag.append("Entropy computation: total generated entropy {:.3f} bits".format(total_entropy))
+        diag.append("Total generated entropy {:.3f} bits".format(total_entropy))
     return (o, total_entropy)
 
 def parse_commandline(parser):
@@ -377,7 +377,7 @@ def main():
         print(json.dumps(diag, sort_keys=True, indent=4))
     else:
         if opts.verbose:
-            print(diag['diag'], file=sys.stderr)
+            print(diag['diag']+"\n", file=sys.stderr)
         for o, hint in l:
             print(o)
             if (opts.hint):
@@ -635,10 +635,10 @@ class CorpusList:
     shortname_mapping = {
         'd': 'digit',
         'l': 'lower',
-        'a': 'a',
+        'a': 'lower_alnum',
         'A': 'alnum',
         'x': 'xdigit',
-        'X': 'X',
+        'X': 'upper_xdigit',
         'B': 'base64',
         'b': 'base64_fssafe',
         's': 'graph',
@@ -713,8 +713,8 @@ class Charlist:
     Symbols = _annotate(chr(c) for c in range(33,127))
 
     sets = {
-        "a": LowerAlphaNumeric,
-        "X": UpperHexadecimal,
+        "lower_alnum": LowerAlphaNumeric,
+        "upper_xdigit": UpperHexadecimal,
         "base64": Base64,
         "base64_fssafe": Base64_FSSAFE,
         "alnum": AlphaNumeric,

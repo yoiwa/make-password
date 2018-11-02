@@ -48,7 +48,7 @@ class CombinatorialGenerator(password_generator.WordsCorpusBase):
         self.reqcounts = tuple(reqcounts)
         self.wordsets = [d for d, _ in wordsets]
         self.comb_cache = {}
-        self.name = "combinatrial({})".format([wl.name for wl in self.wordsets])
+        self.name = "{{{}}}".format(",".join(wl.name for wl in self.wordsets))
 
     def get_repeated(self, *n, **k):
         return CombinatorialWordDictionary(self, *n, **k)
@@ -72,10 +72,14 @@ class CombinatorialGenerator(password_generator.WordsCorpusBase):
             e1, *sets = sorted([(len(s), s, i) for l, s, i in sets])
             outsets.append(e1)
             l1, s1, i1 = e1
+            if l1 == 0: raise BadFormatError("empty set in combination")
             o = []
             #print("in round {}: e1={}, sets={}".format(round, e1, sets))
             for e in sets:
                 (l, s, i) = e
+                if l == 0:
+                    assert False
+                    raise BadFormatError("empty set in combination")
                 if s.isdisjoint(s1):
                     o.append(e)
                 elif s.issuperset(s1):
@@ -152,7 +156,7 @@ class CombinatorialWordDictionary(password_generator.WordsCorpusBase):
         if self.combs == None:
             combs = self.combinations(self.n, self.lens, self.reqcounts, cache=self.comb_cache)
             if combs == 0:
-                raise BadFormatError("impossible to generate combinatorial corpus")
+                raise BadFormatError("impossible combinatorial corpus: no solution")
             self.combs = combs
         return self.combs
 
@@ -275,27 +279,29 @@ def main():
     n, *args = sys.argv[1:]
     n = int(n)
     l = []
+    r = []
     i = len(args) // 2
     for i in range(i):
-        sets = args[i * 2]
+        chars = password_generator._expand_subs(args[i * 2])
         reqcount = int(args[i * 2 + 1])
+        sets = password_generator.BasicCharacterCorpus(chars)
+        r.append((chars, reqcount))
         l.append((sets, reqcount))
-    print("requests={}, n={}".format(l, n))
-
+    print("original   requests={}, n={}".format(r, n))
     g = CombinatorialGenerator(l)
     print("canonified requests={}".format(list(zip(g.sets, g.reqcounts))))
 
-    x = g.get_dict_by_length(n)
+    x = g.get_repeated(n)
 
     print("entropy = {:.3f} bits".format(x.entropy()))
 
     if x.combs > 50:
         for i in range(10):
             k = R.randrange(x.combs)
-            print("{}: {} ({})".format(i, x.get(k), k))
+            print("{}: {} ({})".format(i, x.get_word(k), k))
     else:
         for i in range(x.combs):
-            print("{}: {}".format(i, x.get(i)))
+            print("{}: {}".format(i, x.get_word(i)))
 
 if __name__ == '__main__':
     main()
