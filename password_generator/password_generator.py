@@ -283,10 +283,13 @@ def _resolve_entropy(s, entropy, diag=None):
             raise BadFormatError("cannot meet entropy request by unit corpus")
         total_entropy += ec
         if diag != None:
-            pe = wl.password_elements() or 1
+            pe, l = wl.password_elements(), wl.len()
             e2, cnt2 = e1 / pe, cnt * pe
-            diag.append("Entropy: {0:>7s} * {1:>2d} = {2:7.3f} bits from {3}".
-                        format(("%c%.3f" % ("~ "[int(pe == 1)], e2)), cnt2, ec, wl.name))
+            is_approximate = (False if pe == 1 else
+                              round(l ** (1 / pe)) ** pe != l)
+            diag.append("Entropy:  {0:>7s} * {1:>2d} = {2:7.3f} bits from {3}".
+                        format(("%c%.3f" % (" ~"[int(is_approximate)], e2)),
+                               cnt2, ec, wl.name))
 
     slen = len(s)
     ss = slen-1 if entropy != None and s[slen-1][2] == None else slen
@@ -296,7 +299,7 @@ def _resolve_entropy(s, entropy, diag=None):
         while(total_entropy < entropy):
             _add(s[-1], entropy_goal=(entropy - total_entropy))
     if diag != None:
-        diag.append("Total generated entropy {:.3f} bits".format(total_entropy))
+        diag.append("Total generated entropy: {:.3f} bits".format(total_entropy))
     return (o, total_entropy)
 
 def parse_commandline(parser):
