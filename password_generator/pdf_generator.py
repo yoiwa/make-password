@@ -45,14 +45,17 @@ TitleFont = HintFont
 
 DEBUGBOX = False
 
+class BadDataError(ValueError):
+    pass
+
 # utility routine
 
 def prepare_canvas(c_or_fname, size, pdfargs={}):
-    if isinstance(c_or_fname, str):
+    if isinstance(c_or_fname, canvas.Canvas):
+        return c_or_fname
+    else:
         c = canvas.Canvas(c_or_fname, pagesize=size, **pdfargs)
         return c
-    else:
-        return c_or_fname
 
 # text management routines
 
@@ -438,6 +441,78 @@ layouts = {
     '10': Sheet10,
 }
 
+def verify_json_data(json_dat):
+    try:
+        for dic in json_dat:
+            if (type(dic.get('separator')) is not bool or
+                type(dic.get('password')) is not str or
+                type(dic.get('hint')) is not str):
+                raise BadDataError
+    except LookupError:
+        raise BadDataError
+
+def generate_pdf(output, json_dat, qrcode=False,
+                 wifi_ssid=None,
+                 encrypt=False,
+                 layout='1',
+                 pwdelems=True,
+                 hint=True,
+                 title=None):
+    w = []
+    h = []
+
+    try:
+        for dic in json_dat:
+            if not dic['separator']:
+                w.append(dic['password'])
+                h.append(dic['hint'])
+            else:
+                if w == []:
+                    w.append("")
+                if h == []:
+                    h.append("")
+                w[-1] += dic['password']
+                h[-1] += dic['hint']
+    except LookupError:
+        raise BadDataError
+
+    password = "".join(w)
+
+    dat = (w, h)
+
+    if wifi_ssid:
+        qrcode = True
+        if title == None:
+            title = wifi_ssid
+
+    if qrcode:
+        import qrcode
+        if wifi_ssid:
+            qr_dat = 'WIFI:T:WPA;S:"{}";P:"{}";;'.format(wifi_quote(wifi_ssid), wifi_quote(password))
+        else:
+            qr_dat = password
+        qr = qrcode.make(qr_dat)
+        qr = qr.get_image()
+        qr = ImageReader(qr)
+    else:
+        qr = None
+
+    if encrypt:
+        enc = pdfencrypt.StandardEncryption(password + "--usr", password, strength=128)
+    else:
+        enc = None
+
+    layout = layouts[layout]
+
+    c = layout.draw(output, dat, hint=hint, pwdelems=pwdelems,
+                    qr=qr, title=title, pdfargs={'encrypt': enc})
+    c.setCreator(FULL_VERSION)
+    c.setAuthor('')
+    c.setSubject('')
+    c.setTitle(title or '')
+    c.showPage()
+    c.save()
+
 # Other outputs and data formats
 
 def generate_textfile(fname, dat, encrypt_to):
@@ -542,31 +617,21 @@ def main():
             print("Unrecognized input.  aborting.", file=sys.stderr)
             exit(2)
 
-    w = []
-    h = []
-
     try:
-        for dic in json_dat:
-            if (type(dic.get('separator')) is not bool or
-                type(dic.get('password')) is not str or
-                type(dic.get('hint')) is not str):
-                raise LookupError
+        verify_json_data(json_dat)
+    except BadDataError:
+        print("Bad data.  aborting.", file=sys.stderr)
+        exit(2)
 
-            if not dic['separator']:
-                w.append(dic['password'])
-                h.append(dic['hint'])
-            else:
-                if w == []:
-                    w.append("")
-                if h == []:
-                    h.append("")
-                w[-1] += dic['password']
-                h[-1] += dic['hint']
-    except LookupError:
-        if opts.json:
-            parser.error("bad JSON input: error while parsing")
+    password = "".join(e['password'] for e in json_dat)
+    hintstr = "".join(e['hint'] for e in json_dat)
 
-    password = "".join(w)
+    if opts.hint:
+        print("\nGenerated password: {}\n                   ({})".format(password, hintstr))
+    else:
+        print("\nGenerated password: {}".format(password))
+
+    os.umask(os.umask(0o077) | 0o077)
 
     if opts.output_base:
         base, sep, out = opts.output_base.rpartition('/')
@@ -578,46 +643,13 @@ def main():
         output_base = None
         output = opts.output
 
-    dat = (w, h)
-    if opts.hint:
-        print("\nGenerated password: {}\n                   ({})".format(password, "".join(h)))
-    else:
-        print("\nGenerated password: {}".format(password))
-
-    if opts.wifi_ssid:
-        opts.qrcode = True
-        if opts.title == None:
-            opts.title = opts.wifi_ssid
-
-    if opts.qrcode:
-        import qrcode
-        if opts.wifi_ssid:
-            qr_dat = 'WIFI:T:WPA;S:"{}";P:"{}";;'.format(wifi_quote(opts.wifi_ssid), wifi_quote(password))
-        else:
-            qr_dat = password
-        qr = qrcode.make(qr_dat)
-        qr = qr.get_image()
-        qr = ImageReader(qr)
-    else:
-        qr = None
-
-    os.umask(os.umask(0o077) | 0o077)
-
-    if opts.encrypt:
-        enc = pdfencrypt.StandardEncryption(password + "--usr", password, strength=128)
-    else:
-        enc = None
-
-    layout = layouts[opts.layout]
-
-    c = layout.draw(output, dat, hint=opts.hint, pwdelems=opts.pwdelems,
-                    qr=qr, title=opts.title, pdfargs={'encrypt': enc})
-    c.setCreator(FULL_VERSION)
-    c.setAuthor('')
-    c.setSubject('')
-    c.setTitle(opts.title or '')
-    c.showPage()
-    c.save()
+    generate_pdf(output, json_dat, qrcode=opts.qrcode,
+                 wifi_ssid=opts.wifi_ssid,
+                 encrypt=opts.encrypt,
+                 layout=opts.layout,
+                 hint=opts.hint,
+                 pwdelems=opts.pwdelems,
+                 title=opts.title)
 
     if output_base:
         generate_textfile(output_base + ".txt", password,

@@ -315,12 +315,17 @@ def parse_commandline(parser):
             break
         if (len(s) >= 2 and s[0] == '-'):
             c = s[1]
-            if (c == '[' or
+            if (c in '[{' or
                 c in CorpusList.shortname_mapping):
                 args[i:i] = ('--',)
                 break
 
     return parser.parse_args(args)
+
+    # currently, the following characters are occupied:
+    #  Corpuses:    aA bB d eE   jJ l       s     xX
+    #  this module:            H              U v
+    #  PDF module:             H     L oO Q
 
 format_helpstr = """
 password format specifier:
