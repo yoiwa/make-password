@@ -160,6 +160,36 @@ Some more detailed specifications are also available as follows:
    `[x^f-k]` (only `f` is contained), `[english^O]` (only October
    begins with capital O)).
 
+ * `{charsets}` specified a character-combination set.  `charsets` is
+   a list of specifications for character-based sets, each of which
+   can optionally be followed by a number.  Each element specifies
+   that the generated password may contain characters from that set,
+   and must contain specified number of characters specific in that
+   set.  Specified character-based sets can have duplicated
+   characters, provided that one set wholly contains of the others.
+   The length of the generated password is specified either by a
+   length or an entropy specification (yes, entropy is automatically
+   computed!).
+
+   Some examples: `{d1a1A1}10` specifies that the generated password
+   is 10 characters, with one or more digits, one or more lower-case
+   alphabets, and one or more capital alphabets.  
+   (`A1` here means that characters contained in `A` but not in `a`
+   and `d` (i.e. only capitals) must appear at least once.
+   Accordingly, `a1` means at least one lower-case which are
+   unshared with `d`, and `d1` means at least one digit.)
+
+   `{daA}10` is effectively equivalent to `A10` (at least zero
+   digits, lower-cases and capitals...), and `{X1x1}10` is an error
+   (capital hexadecimals and lower hexadecimals are only partially
+   overlapping.).
+
+   Some useful combinations are as follows:
+
+	 * `{Ad1}10` ... alphanumeric password with at least one digit (`abcd0efghi`)
+	 * `{A1a1d1}10` ... password containing all lower-case, capital and digits (`abCD0efg1HI`)
+	 * `{A1a1d1s1}10` ... also containing a symbol or more (`abc0e!1Fg$`)
+
 _Note: obviously, all of example outputs above are *intentionally* non-random at all.  Never use these as passphrases!_
 
 
