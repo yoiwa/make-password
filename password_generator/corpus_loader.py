@@ -1,4 +1,5 @@
 import sys, io, os
+import re
 from collections.abc import Sequence as abcSequence
 from contextlib import ExitStack
 
@@ -58,7 +59,6 @@ def load_compact_corpus(*args, **kwargs):
     return CompactedCorpus(*args, **kwargs)
 
 class CompactedCorpus(password_generator.WordsCorpusBase):
-
     MAGIC = 0x3b9c787 # 7digits
     VERSION = 2
     HEADER = b'#format packed\n'
@@ -169,10 +169,10 @@ def load_text_corpus(f, name="", errorclass=RuntimeError):
             if in_header:
                 if l == b"#option no-apostrophe":
                     no_apostrophe = True
-                    continue
+            continue
 
         in_header = False
-        for word in l.split():
+        for word in re.sub(br'[,;.:/!?]', b' ', l).split():
             if (word == b'' or
                 word.endswith(b"'") or
                 word.endswith(b"'s")):
@@ -186,3 +186,11 @@ def load_text_corpus(f, name="", errorclass=RuntimeError):
                 wlist.add(str(word, 'ascii'))
     wlist = list(wlist)
     return password_generator.SimpleWordCorpus(wlist, name=name)
+
+if __name__ == '__main__':
+    diag = []
+    d = load_corpus(sys.argv[1], diag=diag)
+    print("\n".join(diag))
+    for i, w in enumerate(d):
+        print("{:5d}: {}".format(i+1, w))
+
