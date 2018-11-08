@@ -1,3 +1,4 @@
 password_generator/corpus/naist-jdic.corpus -diff
 password_generator/corpus/naist-jdic-simple.corpus -diff
 password_generator/corpus/jwikipedia10k.corpus -diff
+password_generator/corpus/crossword.corpus -diff

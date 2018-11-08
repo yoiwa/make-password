@@ -1,12 +1,17 @@
 #!make -f
+# note: this Makefile is not needed for general use.
+# Files are already converted in the source repository.
+
 .DELETE_ON_ERROR:
 
 DIAG=
 # DIAG=--diag
 
-all: corpus/jwikipedia10k.corpus corpus/naist-jdic.corpus corpus/naist-jdic-simple.corpus
+CORPUS=jwikipedia10k naist-jdic naist-jdic-simple crossword
 
-corpus/%.corpus: corpus_source/%.src Makefile.corpus corpus_convert.py
+all: $(patsubst %,corpus/%.corpus,$(CORPUS))
+
+corpus/%.corpus: corpus_source/%.src corpus_convert.py
 	python3 corpus_convert.py $(DIAG) $< $@
 
 corpus/words.corpus: /usr/share/dict/words
