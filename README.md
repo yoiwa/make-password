@@ -152,24 +152,25 @@ Some more detailed specifications are also available as follows:
  
    Locally-installed dictionaries can also be specified in this format.
 
- * Wordsets subset by the first characters can be specified by
+ * Wordset's subset by the first characters can be specified by
    circumflex like `[english^a-ex-z]` or `[j^kst]`.  (both names and
-   mnemonics are accepted before a hat).  Character-sets can also be
-   subset.  It is error to create a single-element or empty set of
-   words/characters (e.g. `[d^a-z]` (no alphabet in the digit set),
-   `[x^f-k]` (only `f` is contained), `[english^O]` (only October
-   begins with capital O)).
+   mnemonics are accepted before a circumflex).  Character-sets can
+   also be subset.  It is error to create a single-element or empty
+   set of words/characters (e.g. `[d^a-z]` (no alphabet in the digit
+   set), `[x^f-k]` (only `f` is contained), `[english^O]` (only
+   October begins with capital O)).
 
- * `{charsets}` specified a character-combination set.  `charsets` is
+ * `{charsets}` specified a character-combination set.  `Charsets` is
    a list of specifications for character-based sets, each of which
    can optionally be followed by a number.  Each element specifies
-   that the generated password may contain characters from that set,
-   and must contain specified number of characters specific in that
-   set.  Specified character-based sets can have duplicated
-   characters, provided that one set wholly contains of the others.
+   that a generated password may contain characters from that set, and
+   must contain the specified number of characters specific in that
+   set.  Two character-based sets in the specification can have
+   over-wrapping characters, provided that either one of these wholly
+   contains the other (duplications are automatically subtracted).
    The length of the generated password is specified either by a
-   length or an entropy specification (yes, entropy is automatically
-   computed!).
+   length or an entropy specification, specified outside the brace.
+   (yes, entropy is automatically computed!)
 
    Some examples: `{d1a1A1}10` specifies that the generated password
    is 10 characters, with one or more digits, one or more lower-case
@@ -179,10 +180,10 @@ Some more detailed specifications are also available as follows:
    Accordingly, `a1` means at least one lower-case which are
    unshared with `d`, and `d1` means at least one digit.)
 
-   `{daA}10` is effectively equivalent to `A10` (at least zero
-   digits, lower-cases and capitals...), and `{X1x1}10` is an error
-   (capital hexadecimals and lower hexadecimals are only partially
-   overlapping.).
+   `{daA}10` is effectively equivalent to `A10` (at least zero digits,
+   lower-cases and capitals...), and `{X1x1}10` is error (capital
+   hexadecimals and lower-case hexadecimals are only partially
+   overlapping.)
 
    Some useful combinations are as follows:
 
@@ -277,16 +278,16 @@ Alternatively, for single-user use, putting all archive contents to an
 arbitrary directory and making a symbolic links to the scripts from an
 executable path will also work.
 
-For portable usage, the file `password_generator/password_generator.py`
-can be used as a standalone script, but only the character-based
-styles and the 'e' dictionary will work.
+The file `password_generator/password_generator.py` can be used as a
+standalone script, but only the character-based basic styles and the
+'e' dictionary will work.
 
 ### Additional dictionaries
 
 You can add any kinds of ASCII text files to the
 `password_generator/corpus` directory with an extension `.corpus`.
 The wordset can be loaded with its basename within `[]`.  For corpus
-with reading hints, refer `corpus_conver.py` for details.
+with reading hints, refer `corpus_convert.py` for details.
 
 Authors are welcoming contribution of new wordset along with reading
 hints.  However, please ensure that such data are generated from
@@ -307,13 +308,14 @@ some details.
 
 ## Acknowledgements
 
-English word corpus and [jwikipedia10k] corpus are extracted from data
-publicly shared by Wikimedia Foundation.  10k-word English corpus is
-based on the materials available in the Gutenberg Project, available
-through Wikimedia.
+English word corpuses and [jwikipedia10k] corpus are extracted from
+data publicly shared by Wikimedia Foundation.  10k-word English corpus
+is based on the materials available in the Gutenberg Project,
+available through Wikimedia.
 
-Japanese word corpus are generated from the "NAIST Japanese
-Dictionary" dataset from Nara Institute of Science and Technology.
+Japanese word corpuses `j' and `J' are generated from the "NAIST
+Japanese Dictionary" dataset from Nara Institute of Science and
+Technology.
 
 ## Author(s)
 

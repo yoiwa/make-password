@@ -346,13 +346,13 @@ def parse_commandline(parser):
 
     return parser.parse_args(args)
 
-    # currently, the following characters are occupied:
+    # Currently, the following characters are occupied:
     #  Corpuses:    aA bB d eE   jJ l       s     xX
     #  this module:            H              U v
     #  PDF module:             H     L oO Q
 
 format_helpstr = """
-password format specifier:
+password format specifiers:
     <charset><numbers> (d8, A8, x8 etc...):
       sequences of characters from predefined sets.
         d: digits l: lowercase a: lowercase + digits, 
@@ -362,7 +362,7 @@ password format specifier:
     <wordset><numbers> (e8, [english]8, j8):
       words selected from wordset corpuses separated by spaces.
         e: ~2k word   Basic words in English,
-        E: ~10k word  English from Gutenberg project,
+        E: ~10k word  English words from Gutenberg project,
         j: ~37k word  Japanese romanization from NAIST-JDIC.
         J: ~132k word Japanese romanization from NAIST-JDIC.
       More word corpuses can be added from external sources.
