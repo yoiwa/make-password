@@ -26,7 +26,7 @@ R = SystemRandom()
 class BadFormatError(RuntimeError):
     pass
 
-def generate(fspec, count):
+def generate(fspec, count, _fuel=None):
     """Generate <count> number of random passwords/passphrases.
 
     The passphrases are formated according to <fspec>.
@@ -43,10 +43,10 @@ def generate(fspec, count):
     """
 
     diag = []
-    fspec, entropy = _parse_fspec(fspec, diag=diag)
+    fspec, entropy = _parse_fspec(fspec, diag=diag, _fuel=_fuel)
     if count < 1:
         raise BadFormatError('bad count of passwords specified')
-    fspec, entropy = _resolve_entropy(fspec, entropy, diag=diag)
+    fspec, entropy = _resolve_entropy(fspec, entropy, diag=diag, _fuel=_fuel)
 
     elements = []
     result = []
@@ -184,7 +184,21 @@ def _remove_backslash(s):
     if s == None: return None
     return re.sub(r"\\(.)", r"\1", s)
 
-def _parse_fspec(s, *, diag=None):
+def _setup_fuel_limit(f):
+    if f == None: return lambda f, k="": None
+    _fuels = {}
+    _fuel = float(f)
+    def _consume_fuel(c, k="general"):
+        if k not in _fuels:
+            _fuels[k] = _fuel
+        _fuels[k] -= c
+        if _fuels[k] < 0:
+            raise BadFormatError("too complex/large pattern (hit {} limit)".format(k))
+    return _consume_fuel
+
+def _parse_fspec(s, *, diag=None, _fuel=None):
+    _consume_fuel = _setup_fuel_limit(_fuel)
+
     @tokenparser('(?P<sep1>[\ \-/,.])|"(?P<sep2>([^\\\"]|\\.)*)"')
     def p_separator(sep1, sep2):
         return sep1 or _remove_backslash(sep2)
@@ -216,6 +230,7 @@ def _parse_fspec(s, *, diag=None):
 
     @tokenparser(r'{corpus}{repeat}?', corpus=p_simplecorpus, repeat=p_number)
     def p_cc_element(corpus, repeat):
+        _consume_fuel(1.0, 'count')
         return (corpus, repeat or 0)
 
     p_cc_elements = p_cc_element.repeated()
@@ -238,21 +253,27 @@ def _parse_fspec(s, *, diag=None):
     @tokenparser('{sep}?{corpus}{repeat}?',
                  sep=p_separator, corpus=p_corpus, repeat=p_number)
     def p_group(sep, corpus, repeat):
+        _consume_fuel(1.0, 'count')
+        _consume_fuel((repeat or 0) / 4, 'repeat')
         return (sep, corpus, repeat)
 
     p_groups = p_group.repeated()
 
     @tokenparser('{spec}(:{entropy})?', spec=p_groups, entropy=p_float)
     def p_spec(spec, entropy):
+        _consume_fuel((entropy or 0) / 128, 'entropy')
         return (spec, entropy)
 
     try:
+        _consume_fuel(len(s), 'length')
         return p_spec(s)
     except ParserError:
         raise BadFormatError("cannot parse format spec")
 
-def _resolve_entropy(s, entropy, diag=None):
+def _resolve_entropy(s, entropy, diag=None, _fuel=None):
     "extend spec to meet requested entropy."
+    _consume_fuel = _setup_fuel_limit(_fuel)
+
     o = []
     total_entropy = 0.0
     def _add(s, entropy_goal=None):
@@ -274,6 +295,8 @@ def _resolve_entropy(s, entropy, diag=None):
             elif cnt == None:
                 cnt = int(ceil((entropy - total_entropy) / wl.entropy()))
                 e1 = wl.entropy()
+        _consume_fuel(1.0, 'count')
+        _consume_fuel(cnt / 8, 'repeat')
         o.append((sep, wl, cnt))
         e1 = wl.entropy()
         ec = e1 * cnt
@@ -281,6 +304,7 @@ def _resolve_entropy(s, entropy, diag=None):
             raise BadFormatError("cannot use empty corpus")
         elif (ec <= 0.0 and entropy_goal != None):
             raise BadFormatError("cannot meet entropy request by unit corpus")
+        _consume_fuel(ec / 128, 'entropy')
         total_entropy += ec
         if diag != None:
             pe, l = wl.password_elements(), wl.len()
@@ -365,6 +389,7 @@ def main():
     parser.add_argument('-v', '--verbose', action='count', help='show some additional diagnostics', dest='verbose')
     parser.add_argument('-H', '--hint', action='store_true', help='show pronunciation hint')
     parser.add_argument('-U', '--force-unicode', action='store_true', help='enforce UTF-8 output')
+    parser.add_argument('--fuel-limit', type=float, default=None, help=argparse.SUPPRESS)
     parser.add_argument('--json', action='store_true', help='output formatted in json')
     parser.add_argument('--help', action='help', help='show this help message and exit')
     parser.add_argument('--version', action='version', version='%(prog)s ' + VERSION)
@@ -376,7 +401,7 @@ def main():
     set_stdout_encoding(opts.force_unicode)
 
     try:
-        l, diag = generate(opts.format, opts.count)
+        l, diag = generate(opts.format, opts.count, _fuel=opts.fuel_limit)
     except BadFormatError as e:
         parser.error("Bad format: " + str(e))
 
