@@ -14,7 +14,7 @@ from collections.abc import Sequence as abcSequence
 from random import SystemRandom
 from math import log2, ceil
 
-VERSION = '1.0alpha2'
+VERSION = '1.0'
 
 if sys.hexversion < 0x03050000:
     raise RuntimeError('too old Python found')
