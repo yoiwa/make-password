@@ -313,14 +313,14 @@ data publicly shared by Wikimedia Foundation.  10k-word English corpus
 is based on the materials available in the Gutenberg Project,
 available through Wikimedia.
 
-Japanese word corpuses `j' and `J' are generated from the "NAIST
+Japanese word corpuses `j` and `J` are generated from the "NAIST
 Japanese Dictionary" dataset from Nara Institute of Science and
 Technology.
 
 ## Author(s)
 
 Yutaka OIWA  
-Information Technology Research Institute  
+Cyber Physical Security Research Center  
 Department of Information Technology and Human Factors  
 National Institute of Advanced Industrial Science and Technology (AIST)
 
