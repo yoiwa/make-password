@@ -303,15 +303,17 @@ some details.
 
  * `[jwikipedia10k]` set requires `kakasi` kanji-kana conversion tool.
 
- * `j` and `J` sets require the naist-jdic-utf8 package contained in
+ * `j` and `J` sets require the `naist-jdic-utf8` package contained in
    Debian archive or elsewhere.
 
 ## Acknowledgements
 
-English word corpuses and [jwikipedia10k] corpus are extracted from
-data publicly shared by Wikimedia Foundation.  10k-word English corpus
-is based on the materials available in the Gutenberg Project,
-available through Wikimedia.
+Word corpuses [basicenglish], [english] and [jwikipedia10k] corpus are
+extracted from data publicly shared by Wikimedia Foundation.  10k-word
+English corpus is based on the materials available in the Gutenberg
+Project, available through Wikimedia.  [crossword] dictionary is
+generated using public-domain data provided by Moby Project.  [skey]
+dictionary is generated from RFC 2289.
 
 Japanese word corpuses `j` and `J` are generated from the "NAIST
 Japanese Dictionary" dataset from Nara Institute of Science and

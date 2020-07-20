@@ -27,7 +27,7 @@ def extract_description(fname, pats):
 
 setup(
     name = "make-password",
-    version = "1.0",
+    version = "1.1",
     author = "Yutaka OIWA",
     author_email = "y.oiwa@aist.go.jp",
     description = "Passphrase generator with corpus support",
