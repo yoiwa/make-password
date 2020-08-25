@@ -194,6 +194,18 @@ Some more detailed specifications are also available as follows:
 _Note: obviously, all of example outputs above are *intentionally* non-random at all.  Never use these as passphrases!_
 
 
+### make-password (Tk GUI)
+
+    usage: make-password --gui (or --tk)
+
+If Tk library is available (true for almost all non-embedded
+implementations of Python), this will show a simple graphical user
+interface to select on password options and have passphrases
+generated.
+
+On Windows, it can be called with the `pythonw` interpreter to invoke
+GUI without making a command-line window.
+
 ### make-password-sheet
 
     usage: make-password-sheet [-H] [-Q] [--wifi-ssid WIFI_SSID]

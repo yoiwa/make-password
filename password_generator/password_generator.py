@@ -380,6 +380,13 @@ password format specifiers:
 
 def main():
     """Generate passphrases from command line."""
+
+    if len(sys.argv) > 1 and sys.argv[1] in ("--gui", "--tk", "--tk-gui"):
+        del sys.argv[1]
+        if '.' in __name__: from . import tk_gui
+        else: import tk_gui
+        return tk_gui.main()
+
     import argparse
 
     parser = argparse.ArgumentParser(description='Generate passphrase candidates',
