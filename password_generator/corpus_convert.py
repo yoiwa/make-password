@@ -458,19 +458,12 @@ def save_compact_corpus(ob, coll, boilerplate = None, rest=None):
 
     ll = len(coll)
 
-    ob.write(CompactedCorpus.HEADER)
-
     if boilerplate:
         boilerplate = boilerplate.encode('utf-8') + b'\n'
     else:
         boilerplate = b''
 
-    s = b'#!!PCK!! %08x %08x %08x %08x !!\n' % (MAGIC, VERSION, len(boilerplate), ll)
-    assert(len(s) == 48)
-    ob.write(s)
-    ob.write(boilerplate)
-    ob.write(CompactedCorpus.HEADER2)
-
+    dat = bytearray()
     ptr = bytearray()
     ptr.extend(b'%07x\n' % (MAGIC,))
 
@@ -487,7 +480,7 @@ def save_compact_corpus(ob, coll, boilerplate = None, rest=None):
     for i in l:
         if words[i] != None:
             continue
-        ob.write(i)
+        dat.extend(i)
         for ss in range(len(i)):
             if i[ss:] in words:
                 words[i[ss:]] = p + ss
@@ -498,8 +491,16 @@ def save_compact_corpus(ob, coll, boilerplate = None, rest=None):
         ptr.extend(b'%07x %07x\n' % (words[k], words[h]))
 
     if rest:
-        ob.write(rest.encode('utf-8', errors='substitute') + b'\n')
+        dat.extend(rest.encode('utf-8', errors='substitute') + b'\n')
 
+    s = b'#!!PCK!! %08x %08x %08x %08x !!\n' % (MAGIC, VERSION, len(boilerplate), ll)
+    assert(len(s) == 48)
+
+    ob.write(CompactedCorpus.HEADER)
+    ob.write(s)
+    ob.write(boilerplate)
+    ob.write(CompactedCorpus.HEADER2)
+    ob.write(dat)
     ob.write(ptr)
 
 if __name__ == '__main__':
