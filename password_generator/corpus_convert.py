@@ -493,8 +493,8 @@ def save_compact_corpus(ob, coll, boilerplate = None, rest=None):
     if rest:
         dat.extend(rest.encode('utf-8', errors='substitute') + b'\n')
 
-    s = b'#!!PCK!! %08x %08x %08x %08x !!\n' % (MAGIC, VERSION, len(boilerplate), ll)
-    assert(len(s) == 48)
+    s = b'#!!PCK!! %08x %08x %08x %08x %08x !\n' % (MAGIC, VERSION, len(boilerplate), len(dat), ll)
+    assert(len(s) == 56)
 
     ob.write(CompactedCorpus.HEADER)
     ob.write(s)
@@ -502,6 +502,7 @@ def save_compact_corpus(ob, coll, boilerplate = None, rest=None):
     ob.write(CompactedCorpus.HEADER2)
     ob.write(dat)
     ob.write(ptr)
+    ob.write(CompactedCorpus.HEADER2)
 
 if __name__ == '__main__':
     import argparse
