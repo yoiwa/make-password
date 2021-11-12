@@ -6,7 +6,7 @@ Note (as written in corpus_format.md) that this corpus format is
 subject to change at any time.
 
 The notation "`\x??`" will indicate a single-octet control character.
-The notation "`\n`" stands for the octet "`\x0a`", a LF control.
+The notation "`\n`" stands for the octet "`\x0a`", a linefeed (LF) control.
 Unless otherwise noted, a literal space will stand for a single
 "`\x20`" octet.
 

@@ -299,7 +299,7 @@ standalone script, but only the character-based basic styles and the
 You can add any kinds of ASCII text files to the
 `password_generator/corpus` directory with an extension `.corpus`.
 The wordset can be loaded with its basename within `[]`.  For corpus
-with reading hints, refer `corpus_convert.py` for details.
+with reading hints, refer `doc/corpus_format.md` for details.
 
 Authors are welcoming contribution of new wordset along with reading
 hints.  However, please ensure that such data are generated from

@@ -38,20 +38,23 @@ pronunciation hints.
 The corpus in this format is marked by the first
 line `#format packed`, ending with LF.
 
-Its format is binary-encoded (random-accessed with binary offsets) and
-subject to change in future: it should not be edited by text editors,
-and should only be generated using routines in
-`password_generator/corpus_convert.py` script.
+It is binary-encoded (random-accessed with binary offsets) and subject
+to change in future: it should not be edited by text editors.
+The hinted format below can be used as a source for corpus in this format.
 
-## Hinted format
+Current format internals are described in `corpus_format_packed_v3.md`.
 
-_This format is obsolete: `password_generator/corpus_convert.py`
-will convert this format to the packed format above._
+## Source-only format for corpus
+
+The support program `password_generator/corpus_convert.py` will accept
+data in some other formats and convert it to the packed format above.
+
+### Hinted data
 
 The file is a text file in UTF-8 encoding with LF line terminators.
 
-Corpus in the hinted format starts with a marker line
-`#format hinted`, ending with LF.
+Hinted data file starts with a marker line `#format hinted`, ending
+with LF.
 
 After the marker line, source and copyright information should be
 written directly after the above marker line, with each line starting
@@ -67,3 +70,7 @@ pronunciation corresponding to the first element.
 Be careful that duplicated words are NOT (always) automatically
 eliminated.
 
+### Other translations
+
+Files starting with a marker line `#preprocessor xxx` will invoke
+an undocumented treatment by `corpus_convert.py`.
