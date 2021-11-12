@@ -14,9 +14,10 @@ else:
 def load_corpus(target, *, rawname=False, diag=None, errorclass=RuntimeError):
         global corpus_base_path
         if not corpus_base_path:
-            from pathlib import Path
-            corpus_base_path = Path(__module__.__file__).parent / 'corpus'
-        fname = str(corpus_base_path / (target + ".corpus"))
+            x = __module__.__file__.rpartition("/")
+            package_base_path = (x[0] if x[0] != "" else ".")
+            corpus_base_path = package_base_path + "/corpus"
+        fname = str(corpus_base_path + "/" + (target + ".corpus"))
 
         fmt = False
 
