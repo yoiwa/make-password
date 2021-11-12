@@ -751,6 +751,14 @@ class Charlist:
     Base64 = AlphaNumeric + _annotate("+/")
     Base64_FSSAFE = AlphaNumeric + _annotate("-_")
     Symbols = _annotate(chr(c) for c in range(33,127))
+    IcaoWordsUpper = [
+        "Alfa", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf",
+        "Hotel", "India", "Juliett", "Kilo", "Lima", "Mike​", "November",
+        "Oscar", "Papa", "Quebec", "Romeo", "Sierra", "Tango", "Uniform",
+        "Victor", "Whiskey", "X-ray", "Yankee", "Zulu" ]
+    IcaoWordsLower = [x.lower() for x in IcaoWordsUpper]
+    IcaoAlphaUpper = [(x[0], "[" + x + "]") for x in IcaoWordsUpper]
+    IcaoAlphaLower = [(x[0], "[" + x + "]") for x in IcaoWordsLower]
 
     sets = {
         "lower_alnum": LowerAlphaNumeric,
@@ -764,7 +772,9 @@ class Charlist:
         "xdigit": Hexadecimal,
         "base32": Base32,
         "base32upper": Base32Upper,
-        "graph": Symbols
+        "graph": Symbols,
+        "icao": IcaoAlphaLower,
+        "ICAO": IcaoAlphaUpper,
     }
 
 class Wordlist:
@@ -1088,7 +1098,9 @@ class Wordlist:
 
     preset_corpus = {
         "english": MoreBasicEnglish,
-        "basicenglish": BasicEnglish
+        "basicenglish": BasicEnglish,
+        "icaowords": Charlist.IcaoWordsLower,
+        "ICAOwords": Charlist.IcaoWordsUpper,
     }
 
 if __name__ == '__main__':
