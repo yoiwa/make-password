@@ -210,12 +210,12 @@ def _parse_fspec(s, *, diag=None, _fuel=None):
 
         if subs:
             wl = wl.subset(subs)
-            if len(wl) == 0:
+            if wl.len() == 0:
                 raise BadFormatError("no words starting with [{}] in wordset {}".format(subs, pat))
-            elif len(wl) == 1:
+            elif wl.len() == 1:
                 raise BadFormatError("only one word starting with [{}] in wordset {}".format(subs, pat))
 
-        if len(wl) <= 1:
+        if wl.len() <= 1:
             raise BadFormatError("not enough candidate in wordset {}".format(subs, pat))
 
         return wl
@@ -510,6 +510,7 @@ class CorpusBase(abcSequence):
 
     def __len__(self):
         return self.len()
+        # May cause overflow due to sys.maxsize limitation. Use .len() method.
 
     def __bool__(self):
         return (self.len() != 0)
@@ -517,7 +518,7 @@ class CorpusBase(abcSequence):
 
     def _find_left(self, s):
         # ported from bisect.bisect_left
-        lo, hi = 0, len(self)
+        lo, hi = 0, self.len()
         while lo < hi:
             mid = (lo + hi) // 2
             if self.get_word(mid) < s:
@@ -528,13 +529,13 @@ class CorpusBase(abcSequence):
 
     def index(self, w):
         p = self._find_left(w)
-        if p >= len(self) or self.get_word(p) != w:
+        if p >= self.len() or self.get_word(p) != w:
             raise ValueError
         return p
 
     def __contains__(self, w):
         p = self._find_left(w)
-        return p < len(self) and self.get_word(p) == w
+        return p < self.len() and self.get_word(p) == w
 
     def get_hint_by_word(self, w):
         try:
@@ -560,7 +561,7 @@ class CorpusBase(abcSequence):
                         break
 
                 l = self._find_left(chr(sc))
-                r = self._find_left(chr(ec)) if ec < 0x110000 else len(self)
+                r = self._find_left(chr(ec)) if ec < 0x110000 else self.len()
                 # chr(ord("\U0010FFFF") + 1) fails.
 
                 if l < r: ranges.append((l, r))
@@ -584,7 +585,7 @@ class _CorpusItemsView(collections.abc.Sized, collections.abc.Iterable):
     def __init__(self, corpus):
         self._corpus = corpus
     def __len__(self):
-        return len(self._corpus)
+        return self._corpus.len()
     def __getitem__(self, i):
         return _corpus.get_with_hint(i)
     def __iter__(self):
@@ -699,6 +700,8 @@ class CorpusList:
             self.corpus_cache[target] = BasicCharacterCorpus(Charlist.sets[target], name=target)
         elif target in Wordlist.preset_corpus:
             self.corpus_cache[target] = SimpleWordCorpus(Wordlist.preset_corpus[target], name=target)
+        elif target in BuiltinCorpus.builtins:
+            self.corpus_cache[target] = BuiltinCorpus.builtins[target]
         else:
             try:
                 if '.' in __name__:
@@ -745,6 +748,13 @@ class Charlist:
     UpperHexadecimal = "0123456789ABCDEF"
     Base32 = Lower + '234567'
     Base32Upper = Upper + '234567'
+    # non-ASCII sets
+    Hiragana = ("\u3042\u3044\u3046\u3048\u304a\u304b\u304d\u304f\u3051\u3053"
+                "\u3055\u3057\u3059\u305b\u305d\u305f\u3061\u3064\u3066\u3068"
+                "\u306a\u306b\u306c\u306d\u306e\u306f\u3072\u3075\u3078\u307b"
+                "\u307e\u307f\u3080\u3081\u3082\u3084\u3086\u3088"
+                "\u3089\u308a\u308b\u308c\u308d\u308f\u3092\u3093")
+    Katakana = "".join(chr(0x60 + ord(x)) for x in Hiragana)
     # annotated sets
     LowerAlphaNumeric = _annotate(Digits + Lower)
     AlphaNumeric = _annotate(Digits + Lower + Upper)
@@ -775,6 +785,8 @@ class Charlist:
         "graph": Symbols,
         "icao": IcaoAlphaLower,
         "ICAO": IcaoAlphaUpper,
+        "hiragana": Hiragana,
+        "katakana": Katakana
     }
 
 class Wordlist:
@@ -1096,11 +1108,59 @@ class Wordlist:
     writing wrong yawn year yearbook yellow yes yesterday you young
     yourself zebra zinc zookeeper zoology""".split()
 
+    Kana = """
+    a  i  u  e  o  ka ki ku ke ko sa shi su se so ta chi tsu te to
+    na ni nu ne no ha hi fu he ho ma mi  mu me mo ya yu  yo
+    ra ri ru re ro wa wo n
+    """.split()
+
     preset_corpus = {
         "english": MoreBasicEnglish,
         "basicenglish": BasicEnglish,
+        "kana": Kana,
         "icaowords": Charlist.IcaoWordsLower,
         "ICAOwords": Charlist.IcaoWordsUpper,
+    }
+
+class UUIDver4(WordsCorpusBase):
+    def __init__(self, variant = 1):
+        self.name = "uuid"
+        if variant in (1, 2):
+            self.variant = variant
+            self.bits = 123 - variant
+        self.n = 1 << self.bits
+
+    def len(self):
+        return self.n
+
+    def get_with_hint(self, x):
+        assert 0 <= x < self.n
+
+        budget = self.bits
+        b = x
+        def takebits(bits):
+            nonlocal budget
+            nonlocal b
+            assert budget >= bits
+            budget -= bits
+            r = b & ((1 << bits) - 1)
+            b >>= bits
+            return r
+
+        b2bits = 15 - self.variant
+        b1 = takebits(48)
+        b2 = takebits(b2bits)
+        b3 = takebits(12)
+        b4 = takebits(16)
+        b5 = takebits(32)
+        assert budget == 0
+
+        s = "%08x-%04x-%04x-%04x-%012x" % (b5, b4, b3 | 0x4000, b2 | ((self. variant + 1) << 14), b1)
+        return WordTuple(s, s)
+
+class BuiltinCorpus:
+    builtins = {
+        "uuid": UUIDver4()
     }
 
 if __name__ == '__main__':
